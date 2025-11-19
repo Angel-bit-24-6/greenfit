@@ -1,0 +1,58 @@
+{
+  "name": "GreenFit",
+  "version": "1.0.0",
+  "description": "Aplicación móvil para venta de comida saludable",
+  "logo": {
+    "primary": "./assets/logo-primary.png",
+    "secondary": "./assets/logo-secondary.png",
+    "icon": "./assets/icon.png"
+  },
+  "api": {
+    "baseUrl": "http://192.168.100.12:3002/api",
+    "timeout": 10000,
+    "retryAttempts": 3
+  },
+  "features": {
+    "chat": {
+      "enabled": true,
+      "maxMessages": 50,
+      "typingIndicator": true
+    },
+    "customPlates": {
+      "enabled": true,
+      "maxIngredients": 6,
+      "allowDuplicates": false
+    },
+    "payments": {
+      "enabled": true,
+      "providers": ["stripe"],
+      "currency": "MXN"
+    },
+    "offline": {
+      "enabled": true,
+      "cacheTimeout": 3600000
+    }
+  },
+  "business": {
+    "name": "GreenFit",
+    "tagline": "Comida saludable para tu bienestar",
+    "phone": "+52 961 123 4567",
+    "email": "hola@greenfit.mx",
+    "website": "https://greenfit.mx",
+    "address": "Tuxtla Gutiérrez, Chiapas, México"
+  },
+  "ui": {
+    "splash": {
+      "backgroundColor": "#22c55e",
+      "logo": "./assets/splash-icon.png",
+      "duration": 2000
+    },
+    "animations": {
+      "enabled": true,
+      "duration": 300
+    },
+    "haptics": {
+      "enabled": true
+    }
+  }
+}

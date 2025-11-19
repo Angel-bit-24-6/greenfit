@@ -1,0 +1,12 @@
+{
+  "development": {
+    "API_BASE_URL": "http://192.168.100.12:3002/api",
+    "BACKEND_URL": "http://192.168.100.12:3002",
+    "FRONTEND_URL": "http://192.168.100.12:8082"
+  },
+  "localhost": {
+    "API_BASE_URL": "http://localhost:3002/api",
+    "BACKEND_URL": "http://localhost:3002",
+    "FRONTEND_URL": "http://localhost:8081"
+  }
+}

@@ -1,0 +1,194 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  phone     String?
+  password  String
+  role      String   @default("customer") // customer, employee, admin
+  preferences Json     @default("{\"dietaryRestrictions\": [], \"allergens\": [], \"favoriteIngredients\": []}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  carts     Cart[]
+  orders    Order[]
+  suggestions Suggestion[]
+  chatLogs  ChatLog[]
+
+  @@map("users")
+}
+
+model Ingredient {
+  id          String   @id @default(cuid())
+  name        String
+  synonyms    Json     @default("[]")
+  stock       Int      @default(0)
+  price       Float    // Float for SQLite
+  allergens   Json     @default("[]")
+  tags        String   @default("[]") // JSON array as TEXT
+  available   Boolean  @default(true)
+  description String?
+  image       String?
+  nutritionalInfo String? @default("{}") // JSON as TEXT
+  
+  // Soft delete fields
+  isDeleted   Boolean  @default(false)
+  deletedAt   DateTime?
+  deletedBy   String?  // Admin user ID who deleted it
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  plateIngredients PlateIngredient[]
+
+  @@map("ingredients")
+}
+
+model Plate {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  price       Float    // Float for SQLite
+  tags        String   @default("[]") // JSON array as TEXT
+  available   Boolean  @default(true)
+  image       String?
+  preparationTime Int? // minutes
+  nutritionalInfo String? @default("{}") // JSON as TEXT
+  
+  // Soft delete fields
+  isDeleted   Boolean  @default(false)
+  deletedAt   DateTime?
+  deletedBy   String?  // Admin user ID who deleted it
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  ingredients PlateIngredient[]
+  cartItems   CartItem[]
+
+  @@map("plates")
+}
+
+model PlateIngredient {
+  id           String     @id @default(cuid())
+  plateId      String
+  ingredientId String
+  quantity     Int        @default(1)
+  required     Boolean    @default(true)
+
+  // Relations
+  plate        Plate      @relation(fields: [plateId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@unique([plateId, ingredientId])
+  @@map("plate_ingredients")
+}
+
+model Cart {
+  id         String   @id @default(cuid())
+  userId     String
+  totalPrice Float    @default(0) // Float for SQLite
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items      CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id                String   @id @default(cuid())
+  cartId            String
+  type              String   // 'plate' or 'custom'
+  plateId           String?
+  customIngredients String?  @default("[]") // JSON array as TEXT
+  quantity          Int      @default(1)
+  price             Float    // Float for SQLite
+  name              String
+  image             String?
+  createdAt         DateTime @default(now())
+
+  // Relations
+  cart              Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  plate             Plate?   @relation(fields: [plateId], references: [id])
+
+  @@map("cart_items")
+}
+
+model Order {
+  id                String   @id @default(cuid())
+  userId            String
+  items             String   // JSON snapshot as TEXT
+  totalPrice        Float    // Float for SQLite
+  status            String   @default("pending") // pending, confirmed, preparing, ready, delivered, cancelled
+  paymentStatus     String   @default("pending") // pending, completed, failed, refunded
+  paymentMethod     String?
+  paymentId         String?  // Stripe Payment Intent ID
+  estimatedDelivery DateTime?
+  estimatedReady    DateTime? // When order should be ready (for kitchen planning)
+  actualReady       DateTime? // When order was actually completed
+  preparationTime   Int?     // Actual preparation time in minutes
+  priority          String   @default("normal") // normal, high, urgent
+  assignedTo        String?  // Employee ID assigned to prepare this order
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  user              User     @relation(fields: [userId], references: [id])
+
+  @@map("orders")
+}
+
+model Suggestion {
+  id                String   @id @default(cuid())
+  userId            String
+  originalText      String
+  extractedEntities String   @default("[]") // JSON array as TEXT
+  fuzzyCandidates   String   @default("[]") // JSON array as TEXT
+  confidence        Float    @default(0) // Float for SQLite
+  status            String   @default("pending") // pending, approved, rejected
+  adminNotes        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  user              User     @relation(fields: [userId], references: [id])
+
+  @@map("suggestions")
+}
+
+model ChatLog {
+  id           String   @id @default(cuid())
+  userId       String
+  rawText      String
+  parsedIntent String?
+  parsedEntities String? @default("{}") // JSON as TEXT
+  matchedIds   String?  @default("[]") // JSON array as TEXT
+  confidence   Float?   // Float for SQLite
+  finalAction  String?
+  userChoice   String?
+  botResponse  String?  @default("{}") // JSON as TEXT
+  createdAt    DateTime @default(now())
+
+  // Relations
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@map("chat_logs")
+}
