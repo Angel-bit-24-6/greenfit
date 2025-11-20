@@ -14,11 +14,13 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuthStore } from '../../stores/authStore';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
+import AuthService from '../../services/authService';
+import { ToastManager } from '../../utils/ToastManager';
 
 interface FormData {
   name: string;
   email: string;
-  phone: string;
+  phone:string;
   password: string;
   confirmPassword: string;
 }
@@ -98,8 +100,7 @@ export const RegisterScreen: React.FC = () => {
 
     try {
       // Use real authentication service
-      const AuthService = await import('../../services/authService');
-      const response = await AuthService.default.register({
+      const response = await AuthService.register({
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
@@ -109,14 +110,14 @@ export const RegisterScreen: React.FC = () => {
       if (response.ok && response.data) {
         // Registration successful
         login(response.data.user, response.data.token);
-        Alert.alert('¡Bienvenido!', 'Tu cuenta ha sido creada exitosamente');
+        ToastManager.success('¡Bienvenido!', 'Tu cuenta ha sido creada exitosamente');
       } else {
         // Registration failed
-        Alert.alert('Error', response.message || 'Error al crear la cuenta');
+        ToastManager.error('Error', response.message || 'Error al crear la cuenta');
       }
     } catch (error) {
       console.error('❌ Registration error:', error);
-      Alert.alert('Error', 'Ocurrió un error al crear tu cuenta');
+      ToastManager.error('Error', 'Ocurrió un error al crear tu cuenta');
     } finally {
       setLoading(false);
       setAuthLoading(false);

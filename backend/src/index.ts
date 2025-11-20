@@ -1,10 +1,12 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 
 // Import middleware
@@ -26,9 +28,6 @@ import adminRoutes from './routes/admin';
 
 // Import controllers for direct endpoint use
 import { CartController } from './controllers/cartController';
-
-// Load environment variables
-dotenv.config();
 
 // Initialize Prisma
 export const prisma = new PrismaClient({
