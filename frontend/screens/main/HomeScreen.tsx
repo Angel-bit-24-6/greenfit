@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,16 +6,38 @@ import {
   ScrollView,
   RefreshControl,
   Alert,
+  Animated,
+  TouchableOpacity,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
-import { Button } from '../../components/ui/Button';
 import { useAuthStore } from '../../stores/authStore';
 import { useCatalogStore } from '../../stores/catalogStore';
 import { useCartStore } from '../../stores/cartStore';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import type { MainTabParamList } from '../../navigation/MainTabNavigator';
 import { ToastManager } from '../../utils/ToastManager';
+
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = width - 40;
+
+// Color palette based on #80f269
+const COLORS = {
+  primary: '#80f269',
+  primaryDark: '#6dd855',
+  primaryLight: '#a5f892',
+  primaryGlow: 'rgba(128, 242, 105, 0.3)',
+  background: '#0a0a0a',
+  backgroundSecondary: '#111111',
+  surface: 'rgba(255, 255, 255, 0.08)',
+  surfaceElevated: 'rgba(255, 255, 255, 0.12)',
+  surfaceCard: 'rgba(128, 242, 105, 0.1)',
+  text: '#ffffff',
+  textSecondary: 'rgba(255, 255, 255, 0.65)',
+  border: 'rgba(128, 242, 105, 0.25)',
+  error: '#ff6b6b',
+};
 
 export const HomeScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
@@ -26,9 +48,53 @@ export const HomeScreen: React.FC = () => {
 
   const totalCartItems = getTotalItems();
 
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const headerScale = useRef(new Animated.Value(0.95)).current;
+  const statsSlide = useRef(new Animated.Value(50)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    // Entrance animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(headerScale, {
+        toValue: 1,
+        tension: 40,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+      Animated.spring(statsSlide, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Pulse animation for cart badge
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.15,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
   const onRefresh = async () => {
     setRefreshing(true);
-    // TODO: Recargar datos del catálogo desde API
     setTimeout(() => {
       setRefreshing(false);
     }, 2000);
@@ -50,291 +116,719 @@ export const HomeScreen: React.FC = () => {
   };
 
   const navigateToMenu = () => {
-    // Navigate to Menu tab programmatically
-    navigation.navigate('Main', { screen: 'MenuTab' });
+    (navigation as any).navigate('Main', { screen: 'MenuTab' });
   };
 
   const navigateToCart = () => {
-    // Navigate to Cart tab programmatically
-    navigation.navigate('Main', { screen: 'CartTab' });
+    (navigation as any).navigate('Main', { screen: 'CartTab' });
   };
 
   const navigateToCustomBuilder = () => {
     navigation.navigate('CustomPlateBuilder');
   };
 
-  return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+  const handleAddToCart = async (plate: any) => {
+    try {
+      if (!plate.available) {
+        ToastManager.noStock(plate.name);
+        return;
       }
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>¡Hola, {user?.name?.split(' ')[0]}! 👋</Text>
-          <Text style={styles.subGreeting}>¿Qué te apetece hoy?</Text>
-        </View>
-        <Button
-          title="Salir"
-          onPress={handleLogout}
-          variant="outline"
-          size="small"
-        />
-      </View>
 
-      {/* Stats Cards */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{catalog?.ingredients?.length || 0}</Text>
-          <Text style={styles.statLabel}>Ingredientes</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{catalog?.plates?.length || 0}</Text>
-          <Text style={styles.statLabel}>Platillos</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{totalCartItems}</Text>
-          <Text style={styles.statLabel}>En carrito</Text>
-        </View>
-      </View>
+      const success = await addItem({
+        type: 'plate',
+        plateId: plate.id,
+        quantity: 1,
+        price: plate.price,
+        name: plate.name,
+        image: plate.image || undefined
+      });
 
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Acciones rápidas</Text>
-        
-        <View style={styles.actionGrid}>
-          <Button
-            title="🍽️ Ver Menú"
-            onPress={navigateToMenu}
-            style={styles.actionButton}
-            size="large"
+      if (success) {
+        ToastManager.addedToCart(plate.name, plate.price);
+      }
+    } catch (error) {
+      ToastManager.error('Error', 'No se pudo agregar al carrito');
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
           />
-          
-          <Button
-            title="🛒 Mi Carrito"
-            onPress={navigateToCart}
-            variant="secondary"
-            style={styles.actionButton}
-            size="large"
-          />
-        </View>
-
-        <View style={styles.actionGrid}>
-          <Button
-            title="📋 Mis Pedidos"
-            onPress={() => navigation.navigate('Orders' as never)}
-            variant="outline"
-            style={styles.actionButton}
-            size="large"
-          />
-        </View>
-
-        <Button
-          title="🎨 Crear Platillo Personalizado"
-          onPress={navigateToCustomBuilder}
-          variant="outline"
-          style={styles.customButton}
-          size="large"
-        />
-      </View>
-
-      {/* Featured Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Destacados del día</Text>
-        
-        {catalog?.plates?.slice(0, 2).map((plate) => (
-          <View key={plate.id} style={styles.featuredCard}>
-            <Text style={styles.featuredTitle}>{plate.name}</Text>
-            <Text style={styles.featuredDescription}>{plate.description}</Text>
-            <View style={styles.featuredFooter}>
-              <Text style={styles.featuredPrice}>${plate.price?.toFixed(2) || '0.00'}</Text>
-              <Button
-                title="Agregar"
-                onPress={() => {
-                  try {
-                    if (!plate.available) {
-                      ToastManager.noStock(plate.name);
-                      return;
-                    }
-
-                    addItem({
-                      type: 'plate',
-                      plateId: plate.id,
-                      quantity: 1,
-                      price: plate.price,
-                      name: plate.name,
-                      image: plate.image || undefined
-                    });
-
-                    ToastManager.addedToCart(plate.name, plate.price);
-                  } catch (error) {
-                    ToastManager.error('Error', 'No se pudo agregar al carrito');
-                  }
-                }}
-                size="small"
-                disabled={!plate.available}
-              />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero Header Section */}
+        <Animated.View
+          style={[
+            styles.heroSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: headerScale }],
+            },
+          ]}
+        >
+          <View style={styles.heroContent}>
+            <View style={styles.heroText}>
+              <Text style={styles.heroGreeting}>
+                Hola, {user?.name?.split(' ')[0]} 👋
+              </Text>
+              <Text style={styles.heroSubtitle}>
+                ¿Listo para comer saludable hoy?
+              </Text>
             </View>
+            <TouchableOpacity
+              onPress={handleLogout}
+              style={styles.logoutButton}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.logoutIcon}>⚙️</Text>
+            </TouchableOpacity>
           </View>
-        ))}
+        </Animated.View>
 
-        {(!catalog?.plates || catalog.plates.length === 0) && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>
-              {catalogLoading ? 'Cargando platillos...' : 'No hay platillos disponibles'}
-            </Text>
-            {catalogError && (
-              <Text style={styles.errorText}>Error: {catalogError}</Text>
-            )}
+        {/* Stats Cards - Horizontal Scroll Style */}
+        <Animated.View
+          style={[
+            styles.statsWrapper,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: statsSlide }],
+            },
+          ]}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.statsContainer}
+          >
+            <View style={[styles.statCard, styles.statCardPrimary]}>
+              <View style={styles.statIconContainer}>
+                <Text style={styles.statIcon}>🥬</Text>
+              </View>
+              <Text style={styles.statNumber}>{catalog?.ingredients?.length || 0}</Text>
+              <Text style={styles.statLabel}>Ingredientes</Text>
+            </View>
+
+            <View style={[styles.statCard, styles.statCardSecondary]}>
+              <View style={styles.statIconContainer}>
+                <Text style={styles.statIcon}>🍽️</Text>
+              </View>
+              <Text style={styles.statNumber}>{catalog?.plates?.length || 0}</Text>
+              <Text style={styles.statLabel}>Platillos</Text>
+            </View>
+
+            <Animated.View
+              style={[
+                styles.statCard,
+                styles.statCardHighlight,
+                {
+                  transform: [{ scale: pulseAnim }],
+                },
+              ]}
+            >
+              <View style={[styles.statIconContainer, styles.statIconHighlight]}>
+                <Text style={styles.statIcon}>🛒</Text>
+              </View>
+              <Text style={[styles.statNumber, styles.statNumberHighlight]}>
+                {totalCartItems}
+              </Text>
+              <Text style={styles.statLabel}>En carrito</Text>
+            </Animated.View>
+          </ScrollView>
+        </Animated.View>
+
+        {/* Quick Actions - Modern Card Design */}
+        <Animated.View
+          style={[
+            styles.section,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: statsSlide }],
+            },
+          ]}
+        >
+          <Text style={styles.sectionTitle}>Explorar</Text>
+          
+          <View style={styles.actionsGrid}>
+            <TouchableOpacity
+              onPress={navigateToMenu}
+              style={styles.actionCard}
+              activeOpacity={0.8}
+            >
+              <View style={styles.actionCardContent}>
+                <View style={[styles.actionIconCircle, styles.actionIconPrimary]}>
+                  <Text style={styles.actionIcon}>🍽️</Text>
+                </View>
+                <Text style={styles.actionTitle}>Menú</Text>
+                <Text style={styles.actionSubtitle}>Ver platillos</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={navigateToCart}
+              style={styles.actionCard}
+              activeOpacity={0.8}
+            >
+              <View style={styles.actionCardContent}>
+                <View style={[styles.actionIconCircle, styles.actionIconSecondary]}>
+                  <Text style={styles.actionIcon}>🛒</Text>
+                </View>
+                <Text style={styles.actionTitle}>Carrito</Text>
+                <Text style={styles.actionSubtitle}>{totalCartItems} items</Text>
+              </View>
+            </TouchableOpacity>
           </View>
-        )}
-      </View>
 
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          🌱 GreenFit - Comida saludable para tu bienestar
-        </Text>
-      </View>
-    </ScrollView>
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Orders' as never)}
+              style={styles.actionCardWide}
+              activeOpacity={0.8}
+            >
+              <View style={styles.actionCardWideContent}>
+                <View style={styles.actionIconSmall}>
+                  <Text style={styles.actionIcon}>📋</Text>
+                </View>
+                <View style={styles.actionCardWideText}>
+                  <Text style={styles.actionTitle}>Mis Pedidos</Text>
+                  <Text style={styles.actionSubtitle}>Historial de compras</Text>
+                </View>
+                <Text style={styles.actionArrow}>→</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            onPress={navigateToCustomBuilder}
+            style={styles.customBuilderCard}
+            activeOpacity={0.8}
+          >
+            <View style={styles.customBuilderContent}>
+              <View style={styles.customBuilderIcon}>
+                <Text style={styles.customBuilderEmoji}>🎨</Text>
+              </View>
+              <View style={styles.customBuilderText}>
+                <Text style={styles.customBuilderTitle}>Creador Personalizado</Text>
+                <Text style={styles.customBuilderSubtitle}>
+                  Diseña tu platillo ideal
+                </Text>
+              </View>
+              <Text style={styles.actionArrow}>→</Text>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Featured Plates - Large Cards */}
+        <Animated.View
+          style={[
+            styles.section,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: statsSlide }],
+            },
+          ]}
+        >
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Destacados</Text>
+            <TouchableOpacity onPress={navigateToMenu}>
+              <Text style={styles.seeAllText}>Ver todo →</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {catalog?.plates?.slice(0, 2).map((plate, index) => (
+            <Animated.View
+              key={plate.id}
+              style={[
+                styles.featuredCard,
+                {
+                  opacity: fadeAnim,
+                  transform: [
+                    {
+                      translateY: statsSlide.interpolate({
+                        inputRange: [0, 50],
+                        outputRange: [0, 20 + index * 15],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.featuredCardContent}>
+                <View style={styles.featuredHeader}>
+                  <View style={styles.featuredTitleContainer}>
+                    <Text style={styles.featuredTitle}>{plate.name}</Text>
+                    <Text style={styles.featuredPrice}>
+                      ${plate.price?.toFixed(2) || '0.00'}
+                    </Text>
+                  </View>
+                </View>
+                
+                <Text style={styles.featuredDescription} numberOfLines={2}>
+                  {plate.description}
+                </Text>
+
+                <View style={styles.featuredFooter}>
+                  <View style={styles.featuredTags}>
+                    {plate.tags?.slice(0, 2).map((tag: string, idx: number) => (
+                      <View key={idx} style={styles.tag}>
+                        <Text style={styles.tagText}>{tag}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  
+                  <TouchableOpacity
+                    onPress={() => handleAddToCart(plate)}
+                    disabled={!plate.available}
+                    style={[
+                      styles.addButton,
+                      !plate.available && styles.addButtonDisabled,
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.addButtonText,
+                        !plate.available && styles.addButtonTextDisabled,
+                      ]}
+                    >
+                      {plate.available ? '+' : 'Agotado'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Animated.View>
+          ))}
+
+          {(!catalog?.plates || catalog.plates.length === 0) && (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>🍽️</Text>
+              <Text style={styles.emptyText}>
+                {catalogLoading ? 'Cargando platillos...' : 'No hay platillos disponibles'}
+              </Text>
+              {catalogError && (
+                <Text style={styles.errorText}>Error: {catalogError}</Text>
+              )}
+            </View>
+          )}
+        </Animated.View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            🌱 GreenFit
+          </Text>
+          <Text style={styles.footerSubtext}>
+            Comida saludable para tu bienestar
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
   },
   content: {
-    padding: 16,
+    paddingBottom: 40,
   },
-  header: {
+  // Hero Section
+  heroSection: {
+    backgroundColor: COLORS.backgroundSecondary,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  heroContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  heroText: {
+    flex: 1,
+  },
+  heroGreeting: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: COLORS.text,
+    letterSpacing: -1,
+    marginBottom: 8,
+    lineHeight: 40,
+  },
+  heroSubtitle: {
+    fontSize: 17,
+    color: COLORS.textSecondary,
+    fontWeight: '400',
+    letterSpacing: 0.2,
+  },
+  logoutButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
-    paddingTop: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  greeting: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#15803d',
+  logoutIcon: {
+    fontSize: 20,
   },
-  subGreeting: {
-    fontSize: 16,
-    color: '#6b7280',
-    marginTop: 4,
+  // Stats Section
+  statsWrapper: {
+    marginTop: 24,
+    marginBottom: 8,
   },
   statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 32,
+    paddingHorizontal: 20,
+    gap: 16,
   },
   statCard: {
-    flex: 1,
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
+    width: 140,
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: 24,
     alignItems: 'center',
-    marginHorizontal: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  statCardPrimary: {
+    backgroundColor: COLORS.surfaceCard,
+    borderColor: COLORS.primary,
+    borderWidth: 1.5,
+  },
+  statCardSecondary: {
+    backgroundColor: COLORS.surfaceElevated,
+  },
+  statCardHighlight: {
+    backgroundColor: COLORS.surfaceCard,
+    borderColor: COLORS.primary,
+    borderWidth: 2,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  statIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.surfaceElevated,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  statIconHighlight: {
+    backgroundColor: COLORS.primary,
+  },
+  statIcon: {
+    fontSize: 28,
   },
   statNumber: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#22c55e',
+    fontSize: 36,
+    fontWeight: '800',
+    color: COLORS.primary,
+    marginBottom: 4,
+    letterSpacing: -1,
+  },
+  statNumberHighlight: {
+    fontSize: 40,
   },
   statLabel: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
+  // Section
   section: {
-    marginBottom: 32,
+    marginTop: 32,
+    paddingHorizontal: 20,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 16,
-  },
-  actionGrid: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: COLORS.text,
+    letterSpacing: -0.5,
+    marginBottom: 20,
+  },
+  seeAllText: {
+    fontSize: 15,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  // Actions
+  actionsGrid: {
+    flexDirection: 'row',
+    gap: 16,
     marginBottom: 16,
   },
-  actionButton: {
+  actionCard: {
     flex: 1,
-    marginHorizontal: 4,
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minHeight: 160,
   },
-  customButton: {
-    marginTop: 8,
+  actionCardContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
   },
+  actionIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  actionIconPrimary: {
+    backgroundColor: COLORS.primary,
+  },
+  actionIconSecondary: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+  actionIcon: {
+    fontSize: 32,
+  },
+  actionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 4,
+    letterSpacing: -0.3,
+  },
+  actionSubtitle: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  actionsRow: {
+    marginBottom: 16,
+  },
+  actionCardWide: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  actionCardWideContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionIconSmall: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.surfaceElevated,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  actionCardWideText: {
+    flex: 1,
+  },
+  actionArrow: {
+    fontSize: 24,
+    color: COLORS.primary,
+    fontWeight: '300',
+  },
+  customBuilderCard: {
+    backgroundColor: COLORS.surfaceCard,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+  customBuilderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  customBuilderIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 20,
+  },
+  customBuilderEmoji: {
+    fontSize: 32,
+  },
+  customBuilderText: {
+    flex: 1,
+  },
+  customBuilderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 4,
+    letterSpacing: -0.3,
+  },
+  customBuilderSubtitle: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  // Featured Cards
   featuredCard: {
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: COLORS.surface,
+    borderRadius: 28,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  featuredCardContent: {
+    padding: 24,
+  },
+  featuredHeader: {
+    marginBottom: 16,
+  },
+  featuredTitleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   featuredTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 4,
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.text,
+    flex: 1,
+    marginRight: 12,
+    letterSpacing: -0.5,
+  },
+  featuredPrice: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.primary,
+    letterSpacing: -0.5,
   },
   featuredDescription: {
-    fontSize: 14,
-    color: '#6b7280',
-    lineHeight: 20,
-    marginBottom: 12,
+    fontSize: 16,
+    color: COLORS.textSecondary,
+    lineHeight: 24,
+    marginBottom: 20,
+    fontWeight: '400',
   },
   featuredFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  featuredPrice: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#22c55e',
+  featuredTags: {
+    flexDirection: 'row',
+    gap: 8,
+    flex: 1,
   },
-  emptyState: {
-    backgroundColor: 'white',
-    padding: 24,
+  tag: {
+    backgroundColor: COLORS.surfaceElevated,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  tagText: {
+    fontSize: 12,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  addButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    minWidth: 80,
     alignItems: 'center',
   },
-  emptyText: {
+  addButtonDisabled: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  addButtonText: {
+    color: COLORS.background,
     fontSize: 16,
-    color: '#6b7280',
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  addButtonTextDisabled: {
+    color: COLORS.textSecondary,
+  },
+  // Empty State
+  emptyState: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: 48,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  emptyEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyText: {
+    fontSize: 17,
+    color: COLORS.textSecondary,
     textAlign: 'center',
+    fontWeight: '500',
+    marginBottom: 8,
   },
   errorText: {
     fontSize: 14,
-    color: '#ef4444',
+    color: COLORS.error,
     textAlign: 'center',
-    marginTop: 8,
+    fontWeight: '600',
   },
+  // Footer
   footer: {
     alignItems: 'center',
-    paddingTop: 24,
-    paddingBottom: 32,
+    paddingTop: 32,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
   },
   footerText: {
+    fontSize: 20,
+    color: COLORS.primary,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  footerSubtext: {
     fontSize: 14,
-    color: '#9ca3af',
-    textAlign: 'center',
+    color: COLORS.textSecondary,
+    fontWeight: '400',
   },
 });
