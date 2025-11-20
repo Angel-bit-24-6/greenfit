@@ -1,15 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
+import { Text, StyleSheet, Platform } from 'react-native';
 
 // Screens
 import { HomeScreen } from '../screens/main/HomeScreen';
 import { MenuScreen } from '../screens/main/MenuScreen';
 import { CartScreen } from '../screens/main/CartScreen';
+import { ProfileScreen } from '../screens/main/ProfileScreen';
 import { useCartStore } from '../stores/cartStore';
-
-// TODO: Create this screen
-const ProfileScreen = () => <Text style={{ flex: 1, textAlign: 'center', marginTop: 50 }}>Profile Screen - Coming Soon</Text>;
+import { useThemeStore } from '../stores/themeStore';
 
 export type MainTabParamList = {
   HomeTab: undefined;
@@ -23,25 +22,25 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 export const MainTabNavigator: React.FC = () => {
   const { getTotalItems } = useCartStore();
   const cartItemsCount = getTotalItems();
+  const { getThemeColors, currentTheme, colorMode } = useThemeStore();
+  const COLORS = getThemeColors();
+  
+  const tabBarStyles = useMemo(() => createTabBarStyles(COLORS), [currentTheme.id]);
 
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#22c55e',
-        tabBarInactiveTintColor: '#6b7280',
-        tabBarStyle: {
-          backgroundColor: 'white',
-          borderTopColor: '#e5e7eb',
-          borderTopWidth: 1,
-          paddingTop: 8,
-          paddingBottom: 8,
-          height: 60,
-        },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '500',
-        },
+        // Eliminamos los colores por defecto; los manejamos en el icono y label
+        tabBarStyle: [
+          tabBarStyles.tabBar,
+          {
+            backgroundColor: COLORS.background, // Fondo de pantalla, no 'surface'
+          }
+        ],
+        tabBarLabelStyle: tabBarStyles.tabBarLabel,
+        tabBarItemStyle: tabBarStyles.tabBarItem,
+        tabBarBadgeStyle: tabBarStyles.tabBarBadge,
       }}
     >
       <Tab.Screen
@@ -49,8 +48,15 @@ export const MainTabNavigator: React.FC = () => {
         component={HomeScreen}
         options={{
           tabBarLabel: 'Inicio',
-          tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 24, color }}>🏠</Text>
+          tabBarIcon: ({ focused }) => (
+            <Text style={[
+              tabBarStyles.icon,
+              { 
+                color: focused ? COLORS.primary : COLORS.textSecondary,
+              }
+            ]}>
+              🏠
+            </Text>
           ),
         }}
       />
@@ -60,8 +66,15 @@ export const MainTabNavigator: React.FC = () => {
         component={MenuScreen}
         options={{
           tabBarLabel: 'Menú',
-          tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 24, color }}>🍽️</Text>
+          tabBarIcon: ({ focused }) => (
+            <Text style={[
+              tabBarStyles.icon,
+              { 
+                color: focused ? COLORS.primary : COLORS.textSecondary,
+              }
+            ]}>
+              🍽️
+            </Text>
           ),
         }}
       />
@@ -72,8 +85,15 @@ export const MainTabNavigator: React.FC = () => {
         options={{
           tabBarLabel: 'Carrito',
           tabBarBadge: cartItemsCount > 0 ? cartItemsCount : undefined,
-          tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 24, color }}>🛒</Text>
+          tabBarIcon: ({ focused }) => (
+            <Text style={[
+              tabBarStyles.icon,
+              { 
+                color: focused ? COLORS.primary : COLORS.textSecondary,
+              }
+            ]}>
+              🛒
+            </Text>
           ),
         }}
       />
@@ -83,11 +103,53 @@ export const MainTabNavigator: React.FC = () => {
         component={ProfileScreen}
         options={{
           tabBarLabel: 'Perfil',
-          tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 24, color }}>👤</Text>
+          tabBarIcon: ({ focused }) => (
+            <Text style={[
+              tabBarStyles.icon,
+              { 
+                color: focused ? COLORS.primary : COLORS.textSecondary,
+              }
+            ]}>
+              👤
+            </Text>
           ),
         }}
       />
     </Tab.Navigator>
   );
 };
+
+const createTabBarStyles = (COLORS: any) => StyleSheet.create({
+  tabBar: {
+    // Eliminamos completamente la sombra y el borde superior
+    height: Platform.OS === 'ios' ? 80 : 60, // Altura más estándar
+    paddingBottom: Platform.OS === 'ios' ? 16 : 8,
+    paddingTop: 8,
+  },
+  tabBarLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 2, // Un pequeño margen inferior para mejor alineación
+  },
+  tabBarItem: {
+    // Sin padding extra
+  },
+  tabBarBadge: {
+    backgroundColor: COLORS.primary, // Fondo sólido primario
+    color: COLORS.background, // Texto blanco (o del fondo)
+    fontSize: 10,
+    fontWeight: '700',
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    // Eliminamos el borde
+    paddingHorizontal: 3,
+    lineHeight: 14, // Para centrar verticalmente el texto
+  },
+  icon: {
+    fontSize: 22, // Tamaño consistente, sin cambiar al estar activo
+    textAlign: 'center',
+    marginBottom: 2, // Pequeño margen para separar del texto
+  },
+});

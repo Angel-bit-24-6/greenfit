@@ -18,6 +18,9 @@ import CheckoutScreen from '../screens/CheckoutScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
 
+// Settings Screens
+import { ThemeSettingsScreen } from '../screens/main/ThemeSettingsScreen';
+
 // Navigation Types
 export type RootStackParamList = {
   Login: undefined;
@@ -30,6 +33,7 @@ export type RootStackParamList = {
   Employee: undefined;
   EmployeeLogin: undefined; // Add Employee Login to auth stack
   Admin: undefined; // Admin Panel
+  ThemeSettings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -124,6 +128,20 @@ export const AppNavigator: React.FC = () => {
                 title: 'Detalle del Pedido',
                 headerStyle: {
                   backgroundColor: '#22c55e',
+                },
+                headerTintColor: '#fff',
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }}
+            />
+            <Stack.Screen 
+              name="ThemeSettings" 
+              component={ThemeSettingsScreen}
+              options={{
+                title: 'Temas',
+                headerStyle: {
+                  backgroundColor: '#0a0a0a',
                 },
                 headerTintColor: '#fff',
                 headerTitleStyle: {

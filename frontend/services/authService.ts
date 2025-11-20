@@ -219,6 +219,50 @@ class AuthService {
   }
 
   /**
+   * Update user profile
+   */
+  static async updateProfile(updates: {
+    name?: string;
+    phone?: string;
+    preferences?: any;
+  }): Promise<AuthResponse> {
+    try {
+      const config = useConfigStore.getState().config;
+      const token = await this.getStoredToken();
+
+      if (!config || !token) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await fetch(`${config.api.baseUrl}/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+      });
+
+      const data = await response.json();
+
+      if (data.ok && data.data) {
+        // Update stored user data
+        await AsyncStorage.setItem(this.USER_KEY, JSON.stringify(data.data));
+        console.log('✅ Profile updated:', data.data.email);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('❌ Update profile error:', error);
+      return {
+        ok: false,
+        message: 'Failed to update profile',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
    * Get authorization header for API calls
    */
   static async getAuthHeaders(): Promise<Record<string, string>> {

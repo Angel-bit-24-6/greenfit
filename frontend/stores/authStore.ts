@@ -11,7 +11,7 @@ interface AuthState {
   isInitialized: boolean;
   
   // Actions
-  login: (user: User, token: string) => void;
+  login: (user: User, token: string) => Promise<void>;
   logout: () => Promise<void>;
   initializeAuth: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -27,7 +27,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   error: null,
   isInitialized: false,
 
-  login: (user, token) => {
+  login: async (user, token) => {
     console.log('🔐 User logged in to store:', user.email);
     set({
       user,
@@ -37,6 +37,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       loading: false,
       isInitialized: true
     });
+    
+    // Load theme preferences from backend after login
+    try {
+      const { loadPreferencesFromBackend } = require('./themeStore').useThemeStore.getState();
+      await loadPreferencesFromBackend();
+    } catch (error) {
+      console.error('❌ Error loading theme preferences after login:', error);
+    }
   },
 
   logout: async () => {
@@ -112,6 +120,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           user: response.data,
           error: null
         });
+        
+        // Load theme preferences from backend after profile refresh
+        const { loadPreferencesFromBackend } = require('./themeStore').useThemeStore.getState();
+        await loadPreferencesFromBackend();
       } else {
         // Profile fetch failed, might be token expired
         console.log('❌ Profile refresh failed, logging out');

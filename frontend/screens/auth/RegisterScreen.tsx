@@ -114,7 +114,7 @@ export const RegisterScreen: React.FC = () => {
           ...response.data.user,
           phone: response.data.user.phone ?? undefined,
         };
-        login(user, response.data.token);
+        await login(user, response.data.token);
         ToastManager.success('¡Bienvenido!', 'Tu cuenta ha sido creada exitosamente');
       } else {
         // Registration failed

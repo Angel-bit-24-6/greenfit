@@ -1,19 +1,25 @@
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View, Alert } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { AppNavigator } from './navigation/AppNavigator';
 import { useConfigStore } from './stores/configStore';
 import { useCatalogStore } from './stores/catalogStore';
+import { useThemeStore } from './stores/themeStore';
 import { toastConfig } from './config/toastConfig';
+import { AlertManagerProvider } from './utils/AlertManager';
+import { ToastManager } from './utils/ToastManager';
 
 // Config files will be loaded with require() to avoid import.meta issues
 
 export default function App() {
   const { setAppConfig, setThemeConfig } = useConfigStore();
   const { fetchCatalog } = useCatalogStore();
+  const { initializeTheme } = useThemeStore();
 
   useEffect(() => {
+    // Initialize theme
+    initializeTheme();
     // Load configurations
     loadConfigurations();
     // Load catalog data using the store
@@ -46,7 +52,7 @@ export default function App() {
       console.log('📡 API Base URL:', networkConfig.API_BASE_URL);
     } catch (error) {
       console.error('❌ Error loading configurations:', error);
-      Alert.alert('Error', 'No se pudieron cargar las configuraciones');
+      ToastManager.error('Error', 'No se pudieron cargar las configuraciones');
     }
   };
 
@@ -64,11 +70,13 @@ export default function App() {
   };
 
   return (
-    <View style={styles.container}>
-      <AppNavigator />
-      <Toast config={toastConfig} />
-      <StatusBar style="light" />
-    </View>
+    <AlertManagerProvider>
+      <View style={styles.container}>
+        <AppNavigator />
+        <Toast config={toastConfig} />
+        <StatusBar style="light" />
+      </View>
+    </AlertManagerProvider>
   );
 }
 

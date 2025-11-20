@@ -1,17 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useCartStore } from '../../stores/cartStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useThemeStore } from '../../stores/themeStore';
 import { Button } from '../../components/ui/Button';
 import { ToastManager } from '../../utils/ToastManager';
+import { AlertManager } from '../../utils/AlertManager';
 
 interface CartItemProps {
   item: any;
@@ -24,16 +25,17 @@ const CartItemComponent: React.FC<CartItemProps> = ({
   onUpdateQuantity, 
   onRemove 
 }) => {
+  const { getThemeColors, currentTheme, colorMode } = useThemeStore();
+  const COLORS = getThemeColors();
+  const itemStyles = useMemo(() => createItemStyles(COLORS), [currentTheme.id, colorMode]);
+  
   const updateQuantity = (change: number) => {
     const newQuantity = item.quantity + change;
     if (newQuantity <= 0) {
-      Alert.alert(
+      AlertManager.confirmDestructive(
         'Eliminar item',
         '¿Deseas eliminar este item del carrito?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Eliminar', style: 'destructive', onPress: () => onRemove(item.id) }
-        ]
+        () => onRemove(item.id)
       );
     } else {
       onUpdateQuantity(item.id, newQuantity);
@@ -41,39 +43,39 @@ const CartItemComponent: React.FC<CartItemProps> = ({
   };
 
   return (
-    <View style={styles.cartItem}>
-      <View style={styles.itemInfo}>
-        <Text style={styles.itemName}>{item.name}</Text>
-        <Text style={styles.itemType}>
+    <View style={[itemStyles.cartItem, { backgroundColor: COLORS.surface, borderColor: COLORS.border }]}>
+      <View style={itemStyles.itemInfo}>
+        <Text style={[itemStyles.itemName, { color: COLORS.text }]}>{item.name}</Text>
+        <Text style={[itemStyles.itemType, { color: COLORS.textSecondary }]}>
           {item.type === 'plate' ? '🍽️ Platillo' : '🎨 Personalizado'}
         </Text>
-        <Text style={styles.itemPrice}>${(item.price * item.quantity).toFixed(2)}</Text>
+        <Text style={[itemStyles.itemPrice, { color: COLORS.primary }]}>${(item.price * item.quantity).toFixed(2)}</Text>
       </View>
       
-      <View style={styles.quantityControls}>
+      <View style={itemStyles.quantityControls}>
         <TouchableOpacity 
-          style={styles.quantityButton}
+          style={[itemStyles.quantityButton, { backgroundColor: COLORS.surfaceElevated, borderColor: COLORS.border }]}
           onPress={() => updateQuantity(-1)}
         >
-          <Text style={styles.quantityButtonText}>-</Text>
+          <Text style={[itemStyles.quantityButtonText, { color: COLORS.text }]}>-</Text>
         </TouchableOpacity>
         
-        <Text style={styles.quantity}>{item.quantity}</Text>
+        <Text style={[itemStyles.quantity, { color: COLORS.text }]}>{item.quantity}</Text>
         
         <TouchableOpacity 
-          style={styles.quantityButton}
+          style={[itemStyles.quantityButton, { backgroundColor: COLORS.surfaceElevated, borderColor: COLORS.border }]}
           onPress={() => updateQuantity(1)}
         >
-          <Text style={styles.quantityButtonText}>+</Text>
+          <Text style={[itemStyles.quantityButtonText, { color: COLORS.text }]}>+</Text>
         </TouchableOpacity>
       </View>
       
       <TouchableOpacity 
-        style={styles.removeButton}
-        onPress={() => onRemove(item.id)}
-      >
-        <Text style={styles.removeButtonText}>🗑️</Text>
-      </TouchableOpacity>
+  style={itemStyles.removeButton}
+  onPress={() => onRemove(item.id)}
+>
+  <Text style={itemStyles.removeButtonText}>🗑️</Text>
+</TouchableOpacity>
     </View>
   );
 };
@@ -84,6 +86,11 @@ export const CartScreen: React.FC = () => {
   const navigation = useNavigation();
   const { cart, removeItem, clearCart, getTotalItems, getTotalPrice, setCart } = useCartStore();
   const { user } = useAuthStore();
+  const { getThemeColors, currentTheme, colorMode } = useThemeStore();
+  const COLORS = getThemeColors();
+  
+  // Create dynamic styles based on current theme and color mode
+  const styles = useMemo(() => createStyles(COLORS), [currentTheme.id, colorMode]);
 
   const handleUpdateQuantity = (itemId: string, newQuantity: number) => {
     // Find item and update it
@@ -155,10 +162,10 @@ export const CartScreen: React.FC = () => {
 
   if (!cart || cart.items.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
+      <View style={[styles.emptyContainer, { backgroundColor: COLORS.background }]}>
         <Text style={styles.emptyIcon}>🛒</Text>
-        <Text style={styles.emptyTitle}>Tu carrito está vacío</Text>
-        <Text style={styles.emptySubtitle}>
+        <Text style={[styles.emptyTitle, { color: COLORS.text }]}>Tu carrito está vacío</Text>
+        <Text style={[styles.emptySubtitle, { color: COLORS.textSecondary }]}>
           Explora nuestro menú y agrega algunos platillos deliciosos
         </Text>
         <Button
@@ -176,11 +183,11 @@ export const CartScreen: React.FC = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: COLORS.background }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>🛒 Mi Carrito</Text>
-        <Text style={styles.subtitle}>
+      <View style={[styles.header, { backgroundColor: COLORS.surface, borderBottomColor: COLORS.border }]}>
+        <Text style={[styles.title, { color: COLORS.text }]}>🛒 Mi Carrito</Text>
+        <Text style={[styles.subtitle, { color: COLORS.textSecondary }]}>
           {totalItems} item{totalItems !== 1 ? 's' : ''} • {user?.name}
         </Text>
       </View>
@@ -202,35 +209,35 @@ export const CartScreen: React.FC = () => {
       />
 
       {/* Summary */}
-      <View style={styles.summary}>
+      <View style={[styles.summary, { backgroundColor: COLORS.surface, borderTopColor: COLORS.border }]}>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Subtotal ({totalItems} items):</Text>
-          <Text style={styles.summaryValue}>${totalPrice.toFixed(2)}</Text>
+          <Text style={[styles.summaryLabel, { color: COLORS.textSecondary }]}>Subtotal ({totalItems} items):</Text>
+          <Text style={[styles.summaryValue, { color: COLORS.text }]}>${totalPrice.toFixed(2)}</Text>
         </View>
         
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Entrega:</Text>
-          <Text style={styles.summaryValue}>Gratis</Text>
+          <Text style={[styles.summaryLabel, { color: COLORS.textSecondary }]}>Entrega:</Text>
+          <Text style={[styles.summaryValue, { color: COLORS.text }]}>Gratis</Text>
         </View>
         
-        <View style={[styles.summaryRow, styles.totalRow]}>
-          <Text style={styles.totalLabel}>Total:</Text>
-          <Text style={styles.totalValue}>${totalPrice.toFixed(2)}</Text>
+        <View style={[styles.summaryRow, styles.totalRow, { borderTopColor: COLORS.border }]}>
+          <Text style={[styles.totalLabel, { color: COLORS.text }]}>Total:</Text>
+          <Text style={[styles.totalValue, { color: COLORS.primary }]}>${totalPrice.toFixed(2)}</Text>
         </View>
       </View>
 
       {/* Actions */}
-      <View style={styles.actions}>
+      <View style={[styles.actions, { backgroundColor: COLORS.surface, borderTopColor: COLORS.border }]}>
         {showClearConfirm ? (
           <View style={styles.confirmContainer}>
             <TouchableOpacity 
-              style={styles.cancelConfirmButton}
+              style={[styles.cancelConfirmButton, { backgroundColor: COLORS.surfaceElevated, borderColor: COLORS.border }]}
               onPress={cancelClearCart}
             >
               <Text style={styles.cancelConfirmText}>❌</Text>
             </TouchableOpacity>
             <TouchableOpacity 
-              style={styles.clearConfirmButton}
+              style={[styles.clearConfirmButton, { backgroundColor: COLORS.error }]}
               onPress={confirmClearCart}
             >
               <Text style={styles.clearConfirmText}>🗑️</Text>
@@ -256,58 +263,62 @@ export const CartScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+// ... (el resto del código anterior se mantiene igual)
+
+const createStyles = (COLORS: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: COLORS.background,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
-    backgroundColor: '#f9fafb',
+    backgroundColor: COLORS.background,
   },
   emptyIcon: {
     fontSize: 64,
     marginBottom: 16,
   },
   emptyTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 8,
+    fontSize: 28,
+    fontWeight: '800',
+    color: COLORS.text,
+    marginBottom: 12,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   emptySubtitle: {
-    fontSize: 16,
-    color: '#6b7280',
+    fontSize: 17,
+    color: COLORS.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: 32,
+    fontWeight: '400',
   },
   exploreButton: {
     minWidth: 200,
   },
   header: {
-    backgroundColor: 'white',
+    backgroundColor: COLORS.background, // Fondo de pantalla
     padding: 20,
     paddingTop: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderBottomWidth: 1, // Línea sutil en la parte inferior
+    borderBottomColor: COLORS.border,
+    // Eliminamos todas las sombras
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1f2937',
+    fontSize: 28,
+    fontWeight: '800',
+    color: COLORS.text,
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6b7280',
-    marginTop: 4,
+    color: COLORS.textSecondary,
+    marginTop: 6,
+    fontWeight: '400',
   },
   itemsList: {
     flex: 1,
@@ -315,144 +326,88 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 16,
   },
-  cartItem: {
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  itemInfo: {
-    flex: 1,
-  },
-  itemName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 4,
-  },
-  itemType: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 4,
-  },
-  itemPrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#22c55e',
-  },
-  quantityControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  quantityButton: {
-    backgroundColor: '#f3f4f6',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  quantityButtonText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#374151',
-  },
-  quantity: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginHorizontal: 16,
-    minWidth: 24,
-    textAlign: 'center',
-  },
-  removeButton: {
-    padding: 8,
-  },
-  removeButtonText: {
-    fontSize: 18,
-  },
+  
+  // --- RESUMEN MODIFICADO ---
   summary: {
-    backgroundColor: 'white',
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: COLORS.background, // Fondo de pantalla
+    padding: 24,
+    borderTopWidth: 1, // Línea sutil en la parte superior
+    borderTopColor: COLORS.border,
+    // Eliminamos sombras
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   summaryLabel: {
     fontSize: 16,
-    color: '#6b7280',
+    color: COLORS.textSecondary,
+    fontWeight: '500',
   },
   summaryValue: {
     fontSize: 16,
-    color: '#1f2937',
+    color: COLORS.text,
+    fontWeight: '600',
   },
   totalRow: {
     borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    paddingTop: 12,
+    borderTopColor: COLORS.border,
+    paddingTop: 16,
+    marginTop: 8,
     marginBottom: 0,
   },
   totalLabel: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.text,
+    letterSpacing: -0.3,
   },
   totalValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#22c55e',
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.primary, // Color primario para el total
+    letterSpacing: -0.3,
   },
+  
+  // --- ACCIONES MODIFICADAS ---
   actions: {
-    backgroundColor: 'white',
+    backgroundColor: COLORS.background, // Fondo de pantalla
     padding: 20,
     paddingTop: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    // Eliminamos sombras
   },
   clearButton: {
     flex: 0.3,
+    borderWidth: 1,
+    borderColor: COLORS.textSecondary, // Borde sutil
   },
   checkoutButton: {
     flex: 0.65,
+    backgroundColor: COLORS.primary, // Botón sólido con color primario
   },
   confirmContainer: {
     flex: 0.3,
     flexDirection: 'row',
     justifyContent: 'space-evenly',
     alignItems: 'center',
+    gap: 12,
   },
   cancelConfirmButton: {
-    backgroundColor: '#f3f4f6',
-    borderColor: '#9ca3af',
+    backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 12,
+    borderColor: COLORS.textSecondary,
+    borderRadius: 16, // Un poco de redondeo para los botones de acción
+    paddingVertical: 14,
     paddingHorizontal: 16,
     justifyContent: 'center',
     alignItems: 'center',
     flex: 0.45,
   },
   clearConfirmButton: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#ef4444',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 12,
+    backgroundColor: COLORS.error, // Rojo para acción destructiva
+    borderRadius: 16,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     justifyContent: 'center',
     alignItems: 'center',
@@ -461,9 +416,82 @@ const styles = StyleSheet.create({
   cancelConfirmText: {
     fontSize: 20,
     textAlign: 'center',
+    color: COLORS.textSecondary,
   },
   clearConfirmText: {
     fontSize: 20,
     textAlign: 'center',
+    color: COLORS.background,
+  },
+});
+
+const createItemStyles = (COLORS: any) => StyleSheet.create({
+  // --- TARJETA DE ITEM MODIFICADA ---
+  cartItem: {
+    backgroundColor: COLORS.background, // Fondo de pantalla
+    padding: 16, // Menos padding
+    // Eliminamos borderRadius y sombras
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1, // Línea sutil para separar items
+    borderBottomColor: COLORS.border,
+  },
+  itemInfo: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 4, // Menos espacio
+    letterSpacing: -0.3,
+  },
+  itemType: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  itemPrice: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: COLORS.primary, // Color primario
+    letterSpacing: -0.3,
+  },
+  quantityControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  quantityButton: {
+    width: 34,
+    height: 34,
+    // Borde sutil en lugar de fondo
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 17, // Redondeo total para un look moderno
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantityButtonText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.primary, // Color primario
+  },
+  quantity: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginHorizontal: 16,
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  removeButton: {
+    padding: 10,
+  },
+  removeButtonText: {
+    fontSize: 18,
+    color: COLORS.textSecondary,
   },
 });

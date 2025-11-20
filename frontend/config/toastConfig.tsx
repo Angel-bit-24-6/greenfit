@@ -1,168 +1,153 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { BaseToast, ErrorToast, InfoToast } from 'react-native-toast-message';
+import { useThemeStore } from '../stores/themeStore';
+
+// Custom toast components with modern design
+const CustomSuccessToast = (props: any) => {
+  const { getThemeColors, colorMode } = useThemeStore();
+  const colors = getThemeColors();
+  
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background, borderColor: colors.primary }]}>
+      <View style={[styles.iconContainer, { backgroundColor: colors.primary }]}>
+        <Text style={styles.iconText}>✓</Text>
+      </View>
+      <View style={styles.content}>
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
+          {props.text1}
+        </Text>
+        {props.text2 && (
+          <Text style={[styles.message, { color: colors.textSecondary }]} numberOfLines={3}>
+            {props.text2}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+};
+
+const CustomErrorToast = (props: any) => {
+  const { getThemeColors, colorMode } = useThemeStore();
+  const colors = getThemeColors();
+  
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background, borderColor: colors.error }]}>
+      <View style={[styles.iconContainer, { backgroundColor: colors.error }]}>
+        <Text style={styles.iconText}>✕</Text>
+      </View>
+      <View style={styles.content}>
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
+          {props.text1}
+        </Text>
+        {props.text2 && (
+          <Text style={[styles.message, { color: colors.textSecondary }]} numberOfLines={3}>
+            {props.text2}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+};
+
+const CustomInfoToast = (props: any) => {
+  const { getThemeColors, colorMode } = useThemeStore();
+  const colors = getThemeColors();
+  
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background, borderColor: colors.primary }]}>
+      <View style={[styles.iconContainer, { backgroundColor: colors.primary }]}>
+        <Text style={styles.iconText}>ℹ</Text>
+      </View>
+      <View style={styles.content}>
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
+          {props.text1}
+        </Text>
+        {props.text2 && (
+          <Text style={[styles.message, { color: colors.textSecondary }]} numberOfLines={3}>
+            {props.text2}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+};
+
+const CustomWarningToast = (props: any) => {
+  const { getThemeColors, colorMode } = useThemeStore();
+  const colors = getThemeColors();
+  
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background, borderColor: '#f59e0b' }]}>
+      <View style={[styles.iconContainer, { backgroundColor: '#f59e0b' }]}>
+        <Text style={styles.iconText}>⚠</Text>
+      </View>
+      <View style={styles.content}>
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
+          {props.text1}
+        </Text>
+        {props.text2 && (
+          <Text style={[styles.message, { color: colors.textSecondary }]} numberOfLines={3}>
+            {props.text2}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+};
 
 export const toastConfig = {
-  success: (props: any) => (
-    <BaseToast
-      {...props}
-      style={[styles.baseToast, styles.successToast]}
-      contentContainerStyle={styles.contentContainer}
-      text1Style={styles.text1}
-      text2Style={styles.text2}
-      text1NumberOfLines={2}
-      text2NumberOfLines={3}
-      leadingIcon={() => (
-        <View style={[styles.iconContainer, styles.successIcon]}>
-          <Text style={styles.iconText}>✓</Text>
-        </View>
-      )}
-    />
-  ),
-  
-  error: (props: any) => (
-    <ErrorToast
-      {...props}
-      style={[styles.baseToast, styles.errorToast]}
-      contentContainerStyle={styles.contentContainer}
-      text1Style={styles.text1}
-      text2Style={styles.text2}
-      text1NumberOfLines={2}
-      text2NumberOfLines={3}
-      leadingIcon={() => (
-        <View style={[styles.iconContainer, styles.errorIcon]}>
-          <Text style={styles.iconText}>⚠</Text>
-        </View>
-      )}
-    />
-  ),
-  
-  info: (props: any) => (
-    <InfoToast
-      {...props}
-      style={[styles.baseToast, styles.infoToast]}
-      contentContainerStyle={styles.contentContainer}
-      text1Style={styles.text1}
-      text2Style={styles.text2}
-      text1NumberOfLines={2}
-      text2NumberOfLines={3}
-      leadingIcon={() => (
-        <View style={[styles.iconContainer, styles.infoIcon]}>
-          <Text style={styles.iconText}>ℹ</Text>
-        </View>
-      )}
-    />
-  ),
-  
-  warning: (props: any) => (
-    <BaseToast
-      {...props}
-      style={[styles.baseToast, styles.warningToast]}
-      contentContainerStyle={styles.contentContainer}
-      text1Style={styles.text1}
-      text2Style={styles.text2}
-      text1NumberOfLines={2}
-      text2NumberOfLines={3}
-      leadingIcon={() => (
-        <View style={[styles.iconContainer, styles.warningIcon]}>
-          <Text style={styles.iconText}>⚡</Text>
-        </View>
-      )}
-    />
-  ),
+  success: (props: any) => <CustomSuccessToast {...props} />,
+  error: (props: any) => <CustomErrorToast {...props} />,
+  info: (props: any) => <CustomInfoToast {...props} />,
+  warning: (props: any) => <CustomWarningToast {...props} />,
 };
 
 const styles = StyleSheet.create({
-  baseToast: {
-    borderRadius: 12,
+  container: {
+    flexDirection: 'row',
+    borderRadius: 20,
+    padding: 16,
     marginHorizontal: 16,
-    paddingHorizontal: 16,
-    height: 'auto',
-    minHeight: 80,
+    marginVertical: 8,
+    borderWidth: 2,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 8,
     },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
+    minHeight: 70,
+    alignItems: 'center',
   },
-  
-  contentContainer: {
-    paddingHorizontal: 8,
-    paddingVertical: 12,
-    flex: 1,
-  },
-  
   iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
-    alignSelf: 'center',
+    marginRight: 16,
   },
-  
   iconText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: 'white',
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#ffffff',
   },
-  
-  text1: {
-    fontSize: 16,
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 17,
     fontWeight: '700',
-    color: '#1f2937',
     marginBottom: 4,
+    letterSpacing: -0.3,
   },
-  
-  text2: {
+  message: {
     fontSize: 14,
-    color: '#6b7280',
-    lineHeight: 18,
-  },
-  
-  // Toast variants
-  successToast: {
-    borderLeftColor: '#22c55e',
-    backgroundColor: '#f0fdf4',
-    borderLeftWidth: 4,
-  },
-  
-  errorToast: {
-    borderLeftColor: '#ef4444',
-    backgroundColor: '#fef2f2',
-    borderLeftWidth: 4,
-  },
-  
-  infoToast: {
-    borderLeftColor: '#3b82f6',
-    backgroundColor: '#eff6ff',
-    borderLeftWidth: 4,
-  },
-  
-  warningToast: {
-    borderLeftColor: '#f59e0b',
-    backgroundColor: '#fffbeb',
-    borderLeftWidth: 4,
-  },
-  
-  // Icon variants
-  successIcon: {
-    backgroundColor: '#22c55e',
-  },
-  
-  errorIcon: {
-    backgroundColor: '#ef4444',
-  },
-  
-  infoIcon: {
-    backgroundColor: '#3b82f6',
-  },
-  
-  warningIcon: {
-    backgroundColor: '#f59e0b',
+    fontWeight: '400',
+    lineHeight: 20,
   },
 });

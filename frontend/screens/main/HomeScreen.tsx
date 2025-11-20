@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,28 +16,13 @@ import type { NavigationProp } from '@react-navigation/native';
 import { useAuthStore } from '../../stores/authStore';
 import { useCatalogStore } from '../../stores/catalogStore';
 import { useCartStore } from '../../stores/cartStore';
+import { useThemeStore } from '../../stores/themeStore';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { ToastManager } from '../../utils/ToastManager';
+import { AlertManager } from '../../utils/AlertManager';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width - 40;
-
-// Color palette based on #80f269
-const COLORS = {
-  primary: '#80f269',
-  primaryDark: '#6dd855',
-  primaryLight: '#a5f892',
-  primaryGlow: 'rgba(128, 242, 105, 0.3)',
-  background: '#0a0a0a',
-  backgroundSecondary: '#111111',
-  surface: 'rgba(255, 255, 255, 0.08)',
-  surfaceElevated: 'rgba(255, 255, 255, 0.12)',
-  surfaceCard: 'rgba(128, 242, 105, 0.1)',
-  text: '#ffffff',
-  textSecondary: 'rgba(255, 255, 255, 0.65)',
-  border: 'rgba(128, 242, 105, 0.25)',
-  error: '#ff6b6b',
-};
 
 export const HomeScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
@@ -45,8 +30,13 @@ export const HomeScreen: React.FC = () => {
   const { user, logout } = useAuthStore();
   const { catalog, loading: catalogLoading, error: catalogError } = useCatalogStore();
   const { getTotalItems, addItem } = useCartStore();
+  const { getThemeColors, currentTheme, colorMode } = useThemeStore();
+  const COLORS = getThemeColors();
 
   const totalCartItems = getTotalItems();
+  
+  // Create dynamic styles based on current theme and color mode
+  const styles = useMemo(() => createStyles(COLORS), [currentTheme.id, colorMode]);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -101,17 +91,10 @@ export const HomeScreen: React.FC = () => {
   };
 
   const handleLogout = () => {
-    Alert.alert(
+    AlertManager.confirmDestructive(
       'Cerrar sesión',
       '¿Estás seguro que deseas cerrar sesión?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Cerrar sesión', 
-          style: 'destructive',
-          onPress: logout 
-        },
-      ]
+      logout
     );
   };
 
@@ -435,7 +418,7 @@ export const HomeScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (COLORS: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
