@@ -1,417 +1,516 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Alert,
-  ActivityIndicator,
+  TextInput,
   TouchableOpacity,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-import { StripeProvider, CardField, useStripe, initPaymentSheet, presentPaymentSheet } from '@stripe/stripe-react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useCartStore } from '../stores/cartStore';
-import { useOrderStore } from '../stores/orderStore';
+// @ts-ignore - Using NUTRIFRESCO order store
+import { useOrderStore } from '../stores/orderStore_nutrifresco';
+import { useSubscriptionStore } from '../stores/subscriptionStore';
 import { useAuthStore } from '../stores/authStore';
-import { useConfigStore } from '../stores/configStore';
-import { useCatalogStore } from '../stores/catalogStore';
+import { useAddressStore, DeliveryAddress } from '../stores/addressStore';
+import { useThemeStore } from '../stores/themeStore';
 import { ToastManager } from '../utils/ToastManager';
+import { AlertManager } from '../utils/AlertManager';
 import { Button } from '../components/ui/Button';
-import { IngredientsList } from '../components/IngredientsList';
-import { 
-  getPlateBaseIngredients, 
-  getIngredientsDetails,
-  formatPrice 
-} from '../utils/catalogHelpers';
-import type { IngredientDetail } from '../types/domain';
 
-interface CheckoutScreenProps {
-  navigation: any;
-}
-
-const CheckoutForm: React.FC<{ navigation: any }> = ({ navigation }) => {
-  const { confirmPayment } = useStripe();
-  const { cart, clearCart, validateCartStock } = useCartStore();
-  const { 
-    currentOrder, 
-    paymentIntent, 
-    isCreatingOrder, 
-    isProcessingPayment,
-    createPaymentIntent, 
-    completePayment,
-    clearCurrentOrder,
-    clearPaymentIntent 
-  } = useOrderStore();
+export const CheckoutScreen: React.FC = () => {
+  const navigation = useNavigation();
+  const { cart, getTotalWeightInKg, getTotalItems } = useCartStore();
+  const { createOrder, currentOrder, loading: orderLoading, setError } = useOrderStore();
+  const { subscription, getRemainingKg } = useSubscriptionStore();
   const { user } = useAuthStore();
-  const { config } = useConfigStore();
-  const { catalog, fetchCatalog } = useCatalogStore();
+  const { 
+    addresses, 
+    selectedAddress, 
+    addAddress, 
+    selectAddress, 
+    loadAddresses,
+    getFavoriteAddresses,
+    setFavorite,
+    loading: addressesLoading 
+  } = useAddressStore();
+  const { getThemeColors, currentTheme, colorMode } = useThemeStore();
+  const COLORS = getThemeColors();
 
-  const [isCardComplete, setIsCardComplete] = useState(false);
-  const [cardDetails, setCardDetails] = useState<any>(null);
-  const [customerEmail, setCustomerEmail] = useState(user?.email || '');
-  const [notes, setNotes] = useState('');
-  const [itemsWithIngredients, setItemsWithIngredients] = useState<Array<{
-    item: any;
-    baseIngredients: IngredientDetail[];
-    customIngredients: IngredientDetail[];
-  }>>([]);
+  const [step, setStep] = useState<'address' | 'review' | 'success'>('address');
+  const [saveAsFavorite, setSaveAsFavorite] = useState(false);
+  const [useFavoriteAddress, setUseFavoriteAddress] = useState(false);
+  const [selectedFavoriteId, setSelectedFavoriteId] = useState<string | null>(null);
 
-  // Calculate total from cart
-  const totalPrice = cart?.items?.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0;
+  // Form fields
+  const [street, setStreet] = useState('');
+  const [number, setNumber] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [contactPhone, setContactPhone] = useState(user?.phone || '');
+  const [references, setReferences] = useState('');
+
+  const styles = useMemo(() => createStyles(COLORS, colorMode), [currentTheme.id, colorMode]);
 
   useEffect(() => {
-    // Set user email if available
-    if (user?.email) {
-      setCustomerEmail(user.email);
+    loadAddresses();
+    if (user?.phone) {
+      setContactPhone(user.phone);
     }
-  }, [user]);
+  }, []);
 
   useEffect(() => {
-    // Load ingredients details when cart or catalog changes
-    if (cart?.items && catalog) {
-      loadCartIngredients();
-    }
-  }, [cart, catalog]);
-
-  const loadCartIngredients = async () => {
-    if (!catalog || !cart?.items) return;
-
-    const itemsDetails = await Promise.all(
-      cart.items.map(async (item) => {
-        let baseIngredients: IngredientDetail[] = [];
-        let customIngredients: IngredientDetail[] = [];
-
-        if (item.type === 'plate' && item.plateId) {
-          // Get base ingredients from the plate
-          baseIngredients = await getPlateBaseIngredients(item.plateId);
-        }
-
-        if (item.customIngredients && item.customIngredients.length > 0) {
-          // Get custom ingredients details
-          customIngredients = getIngredientsDetails(catalog, item.customIngredients, true);
-        }
-
-        return {
-          item,
-          baseIngredients,
-          customIngredients
-        };
-      })
-    );
-
-    setItemsWithIngredients(itemsDetails);
-  };
-
-  const handleCreatePaymentIntent = async () => {
-    if (!user) {
-      ToastManager.error('Please log in to place an order');
-      return;
-    }
-
-    if (!cart?.items || cart.items.length === 0) {
-      ToastManager.error('Cart is empty');
-      return;
-    }
-
-    // First validate stock before creating payment intent
-    console.log('🔍 Validating cart stock...');
-    const stockValid = await validateCartStock();
-    
-    if (!stockValid) {
-      ToastManager.error('Some items in your cart are no longer available');
-      return;
-    }
-
-    // Convert cart items to order items
-    const orderItems = cart.items.map(item => ({
-      id: item.id,
-      type: item.type as 'plate' | 'custom',
-      plateId: item.plateId,
-      customIngredients: item.customIngredients,
-      quantity: item.quantity,
-      price: item.price,
-      name: item.name,
-      image: item.image,
-    }));
-
-    // Create payment intent (no order created yet)
-    const intent = await createPaymentIntent(
-      orderItems,
-      user.id,
-      customerEmail || user.email,
-      notes || undefined
-    );
-
-    if (!intent) {
-      ToastManager.error('Failed to setup payment');
-    }
-  };
-
-  const handlePayment = async () => {
-    if (!paymentIntent || !confirmPayment || !user || !cart) {
-      ToastManager.error('Payment not ready');
-      return;
-    }
-
-    if (!isCardComplete) {
-      ToastManager.error('Please complete your card information');
-      return;
-    }
-
-    try {
-      // Confirm payment with Stripe using CardField
-      const { error, paymentIntent: confirmedIntent } = await confirmPayment(
-        paymentIntent.clientSecret,
-        {
-          paymentMethodType: 'Card',
-        }
-      );
-
-      if (error) {
-        // Only log to console if it's a system error, not user errors
-        if (error.type !== 'card_error') {
-          console.error('❌ Stripe payment error:', error);
-        }
-        
-        // Show user-friendly message
-        const userMessage = error.localizedMessage || error.message || 'Payment failed';
-        ToastManager.error(userMessage);
-        
-        // Clear the payment intent so user can try again with a new one
-        clearPaymentIntent();
-        return;
+    if (selectedFavoriteId) {
+      const favorite = addresses.find(addr => addr.id === selectedFavoriteId);
+      if (favorite) {
+        setStreet(favorite.street);
+        setNumber(favorite.number);
+        setNeighborhood(favorite.neighborhood);
+        setPostalCode(favorite.postalCode);
+        setCity(favorite.city);
+        setState(favorite.state);
+        setContactPhone(favorite.contactPhone);
+        setReferences(favorite.references || '');
+        selectAddress(selectedFavoriteId);
       }
+    }
+  }, [selectedFavoriteId]);
 
-      if (confirmedIntent?.status === 'Succeeded') {
-        // Payment succeeded - now create the order
-        console.log('✅ Payment succeeded, completing payment and creating order...');
-        
-        // Convert cart items to order items
-        const orderItems = cart.items.map(item => ({
-          id: item.id,
-          type: item.type as 'plate' | 'custom',
-          plateId: item.plateId,
-          customIngredients: item.customIngredients,
-          quantity: item.quantity,
-          price: item.price,
-          name: item.name,
-          image: item.image,
-        }));
+  const validateAddress = (): boolean => {
+    if (!street.trim()) {
+      ToastManager.error('Error', 'La calle es requerida');
+      return false;
+    }
+    if (!number.trim()) {
+      ToastManager.error('Error', 'El número es requerido');
+      return false;
+    }
+    if (!neighborhood.trim()) {
+      ToastManager.error('Error', 'La colonia es requerida');
+      return false;
+    }
+    if (!postalCode.trim()) {
+      ToastManager.error('Error', 'El código postal es requerido');
+      return false;
+    }
+    if (!city.trim()) {
+      ToastManager.error('Error', 'La ciudad es requerida');
+      return false;
+    }
+    if (!state.trim()) {
+      ToastManager.error('Error', 'El estado es requerido');
+      return false;
+    }
+    if (!contactPhone.trim()) {
+      ToastManager.error('Error', 'El teléfono de contacto es requerido');
+      return false;
+    }
+    return true;
+  };
 
-        // Complete payment and create order in one operation
-        const order = await completePayment(
-          confirmedIntent.id,
-          orderItems,
-          user.id,
-          customerEmail || user.email,
-          notes || undefined
-        );
+  const handleSaveAddress = async () => {
+    if (!validateAddress()) return;
 
-        if (order) {
-          // Success - order created and stock updated
-          clearCart();
-          clearCurrentOrder();
-          clearPaymentIntent();
+    const addressData: Omit<DeliveryAddress, 'id' | 'createdAt'> = {
+      street: street.trim(),
+      number: number.trim(),
+      neighborhood: neighborhood.trim(),
+      postalCode: postalCode.trim(),
+      city: city.trim(),
+      state: state.trim(),
+      contactPhone: contactPhone.trim(),
+      references: references.trim() || undefined,
+      isFavorite: saveAsFavorite,
+    };
+
+    const success = await addAddress(addressData);
+    if (success) {
+      if (saveAsFavorite) {
+        ToastManager.success('Dirección guardada', 'La dirección se guardó en favoritos');
+      }
+      setStep('review');
+    } else {
+      ToastManager.error('Error', 'No se pudo guardar la dirección');
+    }
+  };
+
+  const handleContinueToReview = () => {
+    if (!validateAddress()) return;
+    setStep('review');
+  };
+
+  const formatAddress = (): string => {
+    return `${street} ${number}, ${neighborhood}, ${postalCode}, ${city}, ${state}`;
+  };
+
+  const handleConfirmOrder = async () => {
+    if (!cart || cart.items.length === 0) {
+      ToastManager.error('Error', 'El carrito está vacío');
+      return;
+    }
+
+    if (!subscription || !subscription.isActive) {
+      AlertManager.alert(
+        'Suscripción Requerida',
+        'Necesitas un plan de suscripción activo para realizar pedidos.'
+      );
+      return;
+    }
+
+    const totalWeight = getTotalWeightInKg();
+    const remainingKg = getRemainingKg();
+
+    if (totalWeight > remainingKg) {
+      AlertManager.alert(
+        'Límite Excedido',
+        `El peso total de tu carrito (${totalWeight.toFixed(2)} kg) excede tu límite disponible (${remainingKg.toFixed(2)} kg).`
+      );
+      return;
+    }
+
+    const deliveryAddress = formatAddress();
+    const notes = references.trim() || undefined;
+
+    // Save address as favorite if requested
+    if (saveAsFavorite && !selectedFavoriteId) {
+      const addressData: Omit<DeliveryAddress, 'id' | 'createdAt'> = {
+        street: street.trim(),
+        number: number.trim(),
+        neighborhood: neighborhood.trim(),
+        postalCode: postalCode.trim(),
+        city: city.trim(),
+        state: state.trim(),
+        contactPhone: contactPhone.trim(),
+        references: references.trim() || undefined,
+        isFavorite: true,
+      };
+      await addAddress(addressData);
+    }
+
+    // Simulate payment (no real payment in NUTRIFRESCO)
+    AlertManager.confirm(
+      'Confirmar Pedido',
+      `¿Deseas confirmar tu pedido de ${totalWeight.toFixed(2)} kg?`,
+      async () => {
+        const success = await createOrder({
+          deliveryAddress,
+          notes,
+        });
+
+        if (success) {
+          setStep('success');
+          ToastManager.success('Pedido Confirmado', 'Tu pedido ha sido creado exitosamente');
           
-          // IMPORTANT: Refresh catalog to show updated stock
-          console.log('🔄 Refreshing catalog to update stock...');
-          await fetchCatalog();
-          
-          ToastManager.success('Payment Successful! Order confirmed.');
-          
+          // Wait a bit for the store to update, then navigate
           setTimeout(() => {
-            navigation.navigate('Main', { screen: 'MenuTab' });
+            const orderId = currentOrder?.id;
+            if (orderId) {
+              (navigation as any).navigate('OrderTracking', { orderId });
+            } else {
+              // Fallback: try to get from store state
+              const storeOrder = useOrderStore.getState().currentOrder;
+              if (storeOrder?.id) {
+                (navigation as any).navigate('OrderTracking', { orderId: storeOrder.id });
+              } else {
+                (navigation as any).navigate('Main', { screen: 'HomeTab' });
+              }
+            }
           }, 2000);
         } else {
-          ToastManager.error('Order creation failed after payment');
-          // Clear payment intent so user can try again
-          clearPaymentIntent();
+          ToastManager.error('Error', 'No se pudo crear el pedido');
         }
-      } else {
-        ToastManager.error(`Payment status: ${confirmedIntent?.status || 'Unknown'}`);
       }
-    } catch (error) {
-      console.error('❌ Payment processing error:', error);
-      ToastManager.error('Payment processing failed');
-      // Clear payment intent so user can try again
-      clearPaymentIntent();
-    }
+    );
   };
 
-  const renderOrderSummary = () => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Order Summary</Text>
-      
-      {itemsWithIngredients.map((itemDetail, index) => {
-        const { item, baseIngredients, customIngredients } = itemDetail;
-        const hasCustomIngredients = customIngredients.length > 0;
-        const customSubtotal = customIngredients.reduce((total, ing) => total + (ing.price * ing.quantity), 0);
-        
-        return (
-          <View key={`checkout-item-${index}-${item.id}`} style={styles.orderItem}>
-            {/* Item Header */}
-            <View style={styles.orderItemHeader}>
+  const totalWeight = getTotalWeightInKg();
+  const totalItems = getTotalItems();
+  const remainingKg = getRemainingKg();
+  const favoriteAddresses = getFavoriteAddresses();
+
+  if (step === 'success') {
+    return (
+      <View style={[styles.container, styles.centerContainer, { backgroundColor: COLORS.background }]}>
+        <Text style={[styles.successIcon, { color: COLORS.primary }]}>✅</Text>
+        <Text style={[styles.successTitle, { color: COLORS.text }]}>¡Pedido Confirmado!</Text>
+        <Text style={[styles.successMessage, { color: COLORS.textSecondary }]}>
+          Tu pedido ha sido creado exitosamente y será procesado pronto.
+        </Text>
+        <Text style={[styles.successSubtext, { color: COLORS.textSecondary }]}>
+          Redirigiendo al inicio...
+        </Text>
+        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 24 }} />
+      </View>
+    );
+  }
+
+  if (step === 'review') {
+    return (
+      <ScrollView style={[styles.container, { backgroundColor: COLORS.background }]} showsVerticalScrollIndicator={false}>
+        <Text style={[styles.title, { color: COLORS.text }]}>Revisar Pedido</Text>
+
+        {/* Order Summary */}
+        <View style={[styles.section, { backgroundColor: COLORS.surface, borderColor: COLORS.border }]}>
+          <Text style={[styles.sectionTitle, { color: COLORS.text }]}>Resumen del Pedido</Text>
+          
+          {cart?.items.map((item, index) => (
+            <View key={index} style={styles.orderItem}>
               <View style={styles.orderItemInfo}>
-                <Text style={styles.orderItemName}>{item.name}</Text>
-                <Text style={styles.orderItemType}>
-                  {item.type === 'plate' ? '🍽️ Menu Plate' : '🥗 Custom Creation'}
-                </Text>
-                <Text style={styles.orderItemDetails}>
-                  Qty: {item.quantity} × {formatPrice(item.price)}
+                <Text style={[styles.orderItemName, { color: COLORS.text }]}>{item.name}</Text>
+                {item.product?.producer && (
+                  <Text style={[styles.producerName, { color: COLORS.textSecondary }]}>
+                    🧑‍🌾 {item.product.producer.businessName}
+                  </Text>
+                )}
+                <Text style={[styles.orderItemDetails, { color: COLORS.textSecondary }]}>
+                  Cantidad: {item.quantity} × {item.weightInKg / item.quantity} kg
                 </Text>
               </View>
-              <Text style={styles.orderItemTotal}>
-                {formatPrice(item.price * item.quantity)}
+              <Text style={[styles.orderItemWeight, { color: COLORS.primary }]}>
+                {item.weightInKg.toFixed(2)} kg
               </Text>
             </View>
+          ))}
 
-            {/* Base Ingredients (for plates) */}
-            {baseIngredients.length > 0 && (
-              <View style={styles.ingredientsSection}>
-                <IngredientsList
-                  title="Included Ingredients"
-                  ingredients={baseIngredients}
-                  showPrices={false}
-                />
-              </View>
-            )}
-
-            {/* Custom Ingredients (with prices) */}
-            {hasCustomIngredients && (
-              <View style={styles.ingredientsSection}>
-                <IngredientsList
-                  title="Extra Ingredients"
-                  ingredients={customIngredients}
-                  showPrices={true}
-                  showSubtotal={false}
-                />
-              </View>
-            )}
-
-            {/* Price Breakdown for Plates with Extras */}
-            {item.type === 'plate' && hasCustomIngredients && (
-              <View style={styles.priceBreakdownSmall}>
-                <Text style={styles.breakdownText}>
-                  Base: {formatPrice(item.price - customSubtotal)} + Extras: {formatPrice(customSubtotal)}
-                </Text>
-              </View>
-            )}
-          </View>
-        );
-      })}
-
-      <View style={styles.totalContainer}>
-        <Text style={styles.totalLabel}>Total:</Text>
-        <Text style={styles.totalAmount}>{formatPrice(totalPrice)}</Text>
-      </View>
-    </View>
-  );
-
-  const renderPaymentSection = () => (
-    <View style={styles.paymentSection}>
-      <Text style={styles.sectionTitle}>Payment Information</Text>
-      
-      <View style={styles.cardContainer}>
-        <Text style={styles.cardLabel}>Card Details</Text>
-        <CardField
-          postalCodeEnabled={true}
-          placeholder={{
-            number: '4242 4242 4242 4242',
-            expiry: 'MM/YY',
-            cvc: 'CVC',
-            postalCode: '12345',
-          }}
-          cardStyle={{
-            backgroundColor: '#FFFFFF',
-            textColor: '#000000',
-            fontSize: 16,
-            placeholderColor: '#9ca3af',
-            borderWidth: 1,
-            borderColor: '#d1d5db',
-            borderRadius: 8,
-          }}
-          style={styles.cardFieldExpanded}
-          onCardChange={(details) => {
-            setCardDetails(details);
-            // Card is complete only if all fields are filled including postal code
-            const isComplete = details.complete && details.postalCode && details.postalCode.length >= 5;
-            setIsCardComplete(isComplete);
-          }}
-        />
-        
-        {!isCardComplete && (
-          <Text style={styles.cardHint}>
-            💳 Enter your card number, expiry date, CVC, and ZIP code (required)
-          </Text>
-        )}
-        
-        {cardDetails?.complete && !cardDetails?.postalCode && (
-          <Text style={styles.cardWarning}>
-            ⚠️ ZIP code is required for payment verification
-          </Text>
-        )}
-        
-        {cardDetails?.complete && cardDetails?.postalCode && cardDetails.postalCode.length < 5 && (
-          <Text style={styles.cardWarning}>
-            ⚠️ Please enter a valid ZIP code (at least 5 digits)
-          </Text>
-        )}
-        
-        {isCardComplete && (
-          <Text style={styles.cardComplete}>
-            ✅ Card details complete including ZIP code
-          </Text>
-        )}
-
-        <Text style={styles.testCardInfo}>
-          🧪 Test card: 4242 4242 4242 4242 (any future date, any CVC)
-        </Text>
-      </View>
-    </View>
-  );
-
-  return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <Text style={styles.title}>Checkout</Text>
-
-      {!paymentIntent ? (
-        <>
-          {renderOrderSummary()}
-          
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Order Details</Text>
-            
-            {/* Email field would go here if needed */}
-            
-            <Text style={styles.label}>Special Instructions (Optional)</Text>
-            <Text style={styles.input}>
-              {notes || 'No special instructions'}
+          <View style={[styles.totalContainer, { borderTopColor: COLORS.border }]}>
+            <Text style={[styles.totalLabel, { color: COLORS.text }]}>Peso Total:</Text>
+            <Text style={[styles.totalWeight, { color: COLORS.primary }]}>
+              {totalWeight.toFixed(2)} kg
             </Text>
           </View>
 
-          <Button
-            title={isCreatingOrder ? 'Setting up payment...' : 'Setup Payment'}
-            onPress={handleCreatePaymentIntent}
-            disabled={isCreatingOrder || !cart?.items || cart.items.length === 0}
-            style={[styles.button, { backgroundColor: config?.theme?.primaryColor || '#16a34a' }]}
-          />
-        </>
-      ) : (
-        <>
-          {renderOrderSummary()}
-          
-          {renderPaymentSection()}
+          {subscription && (
+            <View style={styles.subscriptionInfo}>
+              <Text style={[styles.subscriptionText, { color: COLORS.textSecondary }]}>
+                Plan {subscription.plan} • {remainingKg.toFixed(2)} kg restantes
+              </Text>
+            </View>
+          )}
+        </View>
 
+        {/* Delivery Address */}
+        <View style={[styles.section, { backgroundColor: COLORS.surface, borderColor: COLORS.border }]}>
+          <Text style={[styles.sectionTitle, { color: COLORS.text }]}>📍 Dirección de Entrega</Text>
+          <Text style={[styles.addressText, { color: COLORS.text }]}>{formatAddress()}</Text>
+          {references && (
+            <View style={styles.referencesContainer}>
+              <Text style={[styles.referencesLabel, { color: COLORS.textSecondary }]}>Referencias:</Text>
+              <Text style={[styles.referencesText, { color: COLORS.text }]}>{references}</Text>
+            </View>
+          )}
+          <Text style={[styles.phoneText, { color: COLORS.textSecondary }]}>
+            📞 {contactPhone}
+          </Text>
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actions}>
           <Button
-            title={isProcessingPayment ? 'Processing...' : 'Pay Now'}
-            onPress={handlePayment}
-            disabled={!paymentIntent || isProcessingPayment || !isCardComplete}
-            style={[styles.button, { backgroundColor: config?.theme?.primaryColor || '#16a34a' }]}
+            title="Editar Dirección"
+            onPress={() => setStep('address')}
+            variant="outline"
+            style={styles.editButton}
           />
-        </>
+          <Button
+            title={orderLoading ? 'Confirmando...' : 'Confirmar Pedido'}
+            onPress={handleConfirmOrder}
+            disabled={orderLoading}
+            style={styles.confirmButton}
+          />
+        </View>
+
+        <Button
+          title="Volver al Carrito"
+          onPress={() => navigation.goBack()}
+          variant="outline"
+          style={styles.backButton}
+        />
+      </ScrollView>
+    );
+  }
+
+  return (
+    <ScrollView style={[styles.container, { backgroundColor: COLORS.background }]} showsVerticalScrollIndicator={false}>
+      <View style={[styles.header, { borderBottomColor: COLORS.border }]}>
+        <Text style={[styles.title, { color: COLORS.text }]}>Datos de envío</Text>
+        <Text style={[styles.subtitle, { color: COLORS.textSecondary }]}>
+          Completa los datos para la entrega de tus productos frescos
+        </Text>
+      </View>
+
+      {/* Favorite Addresses */}
+      {favoriteAddresses.length > 0 && (
+        <View style={[styles.favoritesSection, { backgroundColor: COLORS.surface, borderColor: COLORS.border }]}>
+          <Text style={[styles.favoritesTitle, { color: COLORS.text }]}>⭐ Direcciones Favoritas</Text>
+          {favoriteAddresses.map((addr) => (
+            <TouchableOpacity
+              key={addr.id}
+              style={[
+                styles.favoriteCard,
+                {
+                  backgroundColor: selectedFavoriteId === addr.id ? COLORS.primary + '20' : COLORS.background,
+                  borderColor: selectedFavoriteId === addr.id ? COLORS.primary : COLORS.border,
+                },
+              ]}
+              onPress={() => {
+                setSelectedFavoriteId(addr.id);
+                setUseFavoriteAddress(true);
+              }}
+            >
+              <Text style={[styles.favoriteAddressText, { color: COLORS.text }]}>
+                {addr.street} {addr.number}, {addr.neighborhood}
+              </Text>
+              <Text style={[styles.favoriteCityText, { color: COLORS.textSecondary }]}>
+                {addr.city}, {addr.state} • {addr.postalCode}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          {selectedFavoriteId && (
+            <Button
+              title="Usar esta dirección"
+              onPress={handleContinueToReview}
+              style={styles.useFavoriteButton}
+            />
+          )}
+        </View>
       )}
 
+      {/* Address Form */}
+      <View style={[styles.section, { backgroundColor: COLORS.surface, borderColor: COLORS.border }]}>
+        <Text style={[styles.sectionTitle, { color: COLORS.text }]}>
+          {useFavoriteAddress ? 'O ingresa una nueva dirección' : 'Dirección de Entrega'}
+        </Text>
+
+        <View style={styles.formRow}>
+          <View style={[styles.formGroup, { flex: 2 }]}>
+            <Text style={[styles.label, { color: COLORS.text }]}>Calle *</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: COLORS.background, borderColor: COLORS.border, color: COLORS.text }]}
+              value={street}
+              onChangeText={setStreet}
+              placeholder="Av. Insurgentes Sur"
+              placeholderTextColor={COLORS.textSecondary}
+            />
+          </View>
+          <View style={[styles.formGroup, { flex: 1, marginLeft: 12 }]}>
+            <Text style={[styles.label, { color: COLORS.text }]}>Número *</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: COLORS.background, borderColor: COLORS.border, color: COLORS.text }]}
+              value={number}
+              onChangeText={setNumber}
+              placeholder="123"
+              placeholderTextColor={COLORS.textSecondary}
+              keyboardType="numeric"
+            />
+          </View>
+        </View>
+
+        <View style={styles.formRow}>
+          <View style={[styles.formGroup, { flex: 1 }]}>
+            <Text style={[styles.label, { color: COLORS.text }]}>Colonia *</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: COLORS.background, borderColor: COLORS.border, color: COLORS.text }]}
+              value={neighborhood}
+              onChangeText={setNeighborhood}
+              placeholder="Del Valle"
+              placeholderTextColor={COLORS.textSecondary}
+            />
+          </View>
+          <View style={[styles.formGroup, { flex: 1, marginLeft: 12 }]}>
+            <Text style={[styles.label, { color: COLORS.text }]}>Código Postal *</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: COLORS.background, borderColor: COLORS.border, color: COLORS.text }]}
+              value={postalCode}
+              onChangeText={setPostalCode}
+              placeholder="03100"
+              placeholderTextColor={COLORS.textSecondary}
+              keyboardType="numeric"
+            />
+          </View>
+        </View>
+
+        <View style={styles.formRow}>
+          <View style={[styles.formGroup, { flex: 1 }]}>
+            <Text style={[styles.label, { color: COLORS.text }]}>Ciudad *</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: COLORS.background, borderColor: COLORS.border, color: COLORS.text }]}
+              value={city}
+              onChangeText={setCity}
+              placeholder="Ciudad de México"
+              placeholderTextColor={COLORS.textSecondary}
+            />
+          </View>
+          <View style={[styles.formGroup, { flex: 1, marginLeft: 12 }]}>
+            <Text style={[styles.label, { color: COLORS.text }]}>Estado *</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: COLORS.background, borderColor: COLORS.border, color: COLORS.text }]}
+              value={state}
+              onChangeText={setState}
+              placeholder="CDMX"
+              placeholderTextColor={COLORS.textSecondary}
+            />
+          </View>
+        </View>
+
+        <View style={styles.formGroup}>
+          <Text style={[styles.label, { color: COLORS.text }]}>Teléfono de contacto *</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: COLORS.background, borderColor: COLORS.border, color: COLORS.text }]}
+            value={contactPhone}
+            onChangeText={setContactPhone}
+            placeholder="5512345678"
+            placeholderTextColor={COLORS.textSecondary}
+            keyboardType="phone-pad"
+          />
+        </View>
+
+        <View style={styles.formGroup}>
+          <Text style={[styles.label, { color: COLORS.text }]}>Referencias (opcional)</Text>
+          <TextInput
+            style={[styles.input, styles.textArea, { backgroundColor: COLORS.background, borderColor: COLORS.border, color: COLORS.text }]}
+            value={references}
+            onChangeText={setReferences}
+            placeholder="Casa azul, portón negro, entre calle X y Y"
+            placeholderTextColor={COLORS.textSecondary}
+            multiline
+            numberOfLines={3}
+          />
+        </View>
+
+        <TouchableOpacity
+          style={styles.checkboxContainer}
+          onPress={() => setSaveAsFavorite(!saveAsFavorite)}
+        >
+          <View style={[
+            styles.checkbox,
+            {
+              backgroundColor: saveAsFavorite ? COLORS.primary : 'transparent',
+              borderColor: saveAsFavorite ? COLORS.primary : COLORS.border,
+            },
+          ]}>
+            {saveAsFavorite && <Text style={styles.checkmark}>✓</Text>}
+          </View>
+          <Text style={[styles.checkboxLabel, { color: COLORS.text }]}>
+            Guardar como dirección favorita
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Action Button */}
       <Button
-        title="Back to Cart"
+        title="Confirmar dirección y continuar"
+        onPress={handleContinueToReview}
+        style={styles.continueButton}
+        size="large"
+      />
+
+      <Button
+        title="Volver al Carrito"
         onPress={() => navigation.goBack()}
         variant="outline"
         style={styles.backButton}
@@ -420,64 +519,137 @@ const CheckoutForm: React.FC<{ navigation: any }> = ({ navigation }) => {
   );
 };
 
-const CheckoutScreen: React.FC<CheckoutScreenProps> = ({ navigation }) => {
-  const { paymentIntent } = useOrderStore();
-  
-  // Use the publishable key from the payment intent (most secure)
-  // or fall back to environment variable
-  const publishableKey = paymentIntent?.publishableKey || process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_51SUMK1Jhn8qVO6fD9UlijOSKTKv1j5ssyMHcrEgqxO9816XvCZ3KLVlkfBAxV9rHTbZXcMFNB8fxydjAHXvCsRIt00HxX9iarq';
-
-  return (
-    <StripeProvider publishableKey={publishableKey}>
-      <CheckoutForm navigation={navigation} />
-    </StripeProvider>
-  );
-};
-
-const styles = StyleSheet.create({
+const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: COLORS.background,
     padding: 16,
+  },
+  centerContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  header: {
+    marginBottom: 24,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 24,
-    textAlign: 'center',
+    fontWeight: '800',
+    color: COLORS.text,
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: COLORS.textSecondary,
+    lineHeight: 22,
   },
   section: {
-    backgroundColor: 'white',
+    backgroundColor: COLORS.surface,
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#1f2937',
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 16,
+    letterSpacing: -0.3,
+  },
+  favoritesSection: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+  },
+  favoritesTitle: {
+    fontSize: 18,
+    fontWeight: '700',
     marginBottom: 12,
   },
-  orderItem: {
-    marginBottom: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    backgroundColor: '#f9fafb',
+  favoriteCard: {
+    padding: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    marginBottom: 12,
   },
-  orderItemHeader: {
+  favoriteAddressText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  favoriteCityText: {
+    fontSize: 14,
+  },
+  useFavoriteButton: {
+    marginTop: 8,
+  },
+  formRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  formGroup: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: COLORS.text,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    minHeight: 44,
+  },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkmark: {
+    color: COLORS.background,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  checkboxLabel: {
+    fontSize: 16,
+    flex: 1,
+  },
+  continueButton: {
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  backButton: {
+    marginBottom: 32,
+  },
+  orderItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   orderItemInfo: {
     flex: 1,
@@ -485,44 +657,19 @@ const styles = StyleSheet.create({
   },
   orderItemName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
+    fontWeight: '700',
     marginBottom: 4,
   },
-  orderItemType: {
-    fontSize: 14,
-    color: '#6b7280',
+  producerName: {
+    fontSize: 13,
     marginBottom: 4,
   },
   orderItemDetails: {
     fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
   },
-  orderItemTotal: {
+  orderItemWeight: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-  },
-  ingredientsSection: {
-    backgroundColor: 'white',
-    borderRadius: 6,
-    padding: 10,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  priceBreakdownSmall: {
-    backgroundColor: '#f3f4f6',
-    borderRadius: 4,
-    padding: 8,
-    marginTop: 4,
-  },
-  breakdownText: {
-    fontSize: 12,
-    color: '#6b7280',
-    textAlign: 'center',
-    fontStyle: 'italic',
+    fontWeight: '700',
   },
   totalContainer: {
     flexDirection: 'row',
@@ -531,120 +678,79 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 2,
-    borderTopColor: '#e5e7eb',
   },
   totalLabel: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#1f2937',
+    fontWeight: '700',
   },
-  totalAmount: {
+  totalWeight: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#16a34a',
+    fontWeight: '800',
   },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#1f2937',
-    backgroundColor: '#f9fafb',
-  },
-  // Payment Section Styles
-  paymentSection: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  cardContainer: {
+  subscriptionInfo: {
     marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
-  cardLabel: {
+  subscriptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  addressText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#374151',
-    marginBottom: 12,
+    marginBottom: 8,
+    lineHeight: 24,
   },
-  cardFieldExpanded: {
-    height: 80, // Increased height for better visibility
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    padding: 4,
-  },
-  cardField: {
-    backgroundColor: '#f9fafb',
-    borderColor: '#d1d5db',
-    borderWidth: 1,
-    borderRadius: 8,
-    fontSize: 16,
-    placeholderColor: '#9ca3af',
-  },
-  cardHint: {
-    fontSize: 14,
-    color: '#6b7280',
+  referencesContainer: {
     marginTop: 8,
-    padding: 12,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 6,
-    textAlign: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  referencesLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  referencesText: {
+    fontSize: 14,
     lineHeight: 20,
   },
-  cardComplete: {
+  phoneText: {
     fontSize: 14,
-    color: '#16a34a',
-    fontWeight: '600',
     marginTop: 8,
-    padding: 12,
-    backgroundColor: '#f0fdf4',
-    borderRadius: 6,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  editButton: {
+    flex: 0.4,
+  },
+  confirmButton: {
+    flex: 0.6,
+  },
+  successIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  successTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    marginBottom: 12,
     textAlign: 'center',
   },
-  cardWarning: {
+  successMessage: {
+    fontSize: 18,
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 24,
+  },
+  successSubtext: {
     fontSize: 14,
-    color: '#f59e0b',
-    fontWeight: '600',
-    marginTop: 8,
-    padding: 12,
-    backgroundColor: '#fef3c7',
-    borderRadius: 6,
     textAlign: 'center',
-  },
-  testCardInfo: {
-    fontSize: 12,
-    color: '#8b5a2b',
-    marginTop: 12,
-    padding: 10,
-    backgroundColor: '#fef3c7',
-    borderRadius: 6,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    lineHeight: 16,
-  },
-  button: {
-    marginTop: 24,
-    paddingVertical: 16,
-    borderRadius: 12,
-  },
-  backButton: {
-    marginTop: 12,
-    marginBottom: 32,
   },
 });
-
-export default CheckoutScreen;

@@ -14,9 +14,11 @@ import { MainTabNavigator } from './MainTabNavigator';
 import { EmployeeAppNavigator } from './EmployeeAppNavigator';
 import { AdminNavigator } from './AdminNavigator';
 import { CustomPlateBuilderScreen } from '../screens/main/CustomPlateBuilderScreen';
-import CheckoutScreen from '../screens/CheckoutScreen';
+import { CheckoutScreen } from '../screens/CheckoutScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
+import { OrderTrackingScreen } from '../screens/OrderTrackingScreen';
+import { SatisfactionSurveyScreen } from '../screens/SatisfactionSurveyScreen';
 
 // Settings Screens
 import { ThemeSettingsScreen } from '../screens/main/ThemeSettingsScreen';
@@ -30,6 +32,8 @@ export type RootStackParamList = {
   Checkout: undefined;
   Orders: undefined;
   OrderDetail: { orderId: string };
+  OrderTracking: { orderId: string };
+  SatisfactionSurvey: { orderId: string };
   Employee: undefined;
   EmployeeLogin: undefined; // Add Employee Login to auth stack
   Admin: undefined; // Admin Panel
@@ -126,6 +130,34 @@ export const AppNavigator: React.FC = () => {
               component={OrderDetailScreen}
               options={{
                 title: 'Detalle del Pedido',
+                headerStyle: {
+                  backgroundColor: '#22c55e',
+                },
+                headerTintColor: '#fff',
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }}
+            />
+            <Stack.Screen 
+              name="OrderTracking" 
+              component={OrderTrackingScreen}
+              options={{
+                title: 'Seguimiento de Pedido',
+                headerStyle: {
+                  backgroundColor: '#22c55e',
+                },
+                headerTintColor: '#fff',
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }}
+            />
+            <Stack.Screen 
+              name="SatisfactionSurvey" 
+              component={SatisfactionSurveyScreen}
+              options={{
+                title: 'Encuesta de Satisfacción',
                 headerStyle: {
                   backgroundColor: '#22c55e',
                 },

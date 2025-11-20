@@ -206,11 +206,15 @@
             [x] Validación: deshabilitar checkout si excede límite
             [x] Mensaje claro si intenta agregar más de lo permitido
 
-[ ] 4.7 CheckoutScreen (refactorizar)
-    [ ] Resumen del pedido con peso total
-    [ ] Validación final de límite
-    [ ] Confirmación de dirección de entrega
-    [ ] Proceso de confirmación del pedido
+        [x] 4.7 CheckoutScreen (refactorizar)
+            [x] Resumen del pedido con peso total
+            [x] Validación final de límite
+            [x] Confirmación de dirección de entrega
+            [x] Proceso de confirmación del pedido
+            [x] Formulario de dirección completo
+            [x] Guardar direcciones favoritas
+            [x] Seleccionar dirección favorita
+            [x] Simulación de pago (sin Stripe)
 
 [ ] 4.8 SubscriptionScreen (nuevo)
     [ ] Mostrar plan actual
