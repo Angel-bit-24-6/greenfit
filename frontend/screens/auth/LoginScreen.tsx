@@ -10,13 +10,17 @@ import {
   Animated,
   TouchableOpacity,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { useAuthStore } from '../../stores/authStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { ToastManager } from '../../utils/ToastManager';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
+
+const { width } = Dimensions.get('window');
 
 export const LoginScreen: React.FC = () => {
   const [email, setEmail] = useState('test@greenfit.mx');
@@ -28,10 +32,10 @@ export const LoginScreen: React.FC = () => {
 
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const { login, setLoading: setAuthLoading } = useAuthStore();
-  const { getThemeColors, currentTheme } = useThemeStore();
+  const { getThemeColors, currentTheme, colorMode } = useThemeStore();
   const COLORS = getThemeColors();
   
-  const styles = useMemo(() => createStyles(COLORS), [currentTheme.id]);
+  const styles = useMemo(() => createStyles(COLORS, colorMode), [currentTheme.id, colorMode]);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -96,7 +100,36 @@ export const LoginScreen: React.FC = () => {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        bounces={false}
       >
+        {/* Header with Gradient */}
+        <View style={styles.headerContainer}>
+          <LinearGradient
+            colors={[COLORS.primary, COLORS.primaryDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.gradientHeader}
+          >
+            <Animated.View
+              style={[
+                styles.headerContent,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY }],
+                },
+              ]}
+            >
+              <Text style={styles.logo}>🌱</Text>
+              <Text style={styles.brandName}>GreenFit</Text>
+            </Animated.View>
+            
+            {/* Wavy Separator - Simplified */}
+            <View style={styles.wavyContainer}>
+              <View style={[styles.wavyShape, { backgroundColor: COLORS.background }]} />
+            </View>
+          </LinearGradient>
+        </View>
+
         <Animated.View
           style={[
             styles.content,
@@ -106,22 +139,23 @@ export const LoginScreen: React.FC = () => {
             },
           ]}
         >
-          {/* Logo & Title */}
-          <View style={styles.header}>
-            <Text style={styles.logo}>🌱</Text>
-            <Text style={styles.title}>GreenFit</Text>
-            <Text style={styles.subtitle}>Bienvenido de nuevo</Text>
+          {/* Welcome Text */}
+          <View style={styles.welcomeSection}>
+            <Text style={styles.welcomeText}>Bienvenido de nuevo</Text>
           </View>
 
-          {/* Form - Sin card, solo inputs y botón */}
+          {/* Form */}
           <View style={styles.form}>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Email</Text>
-              <View style={[styles.inputRow, isEmailFocused && styles.inputRowFocused]}>
+              <View style={[
+                styles.inputContainer,
+                isEmailFocused && styles.inputContainerFocused
+              ]}>
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
-                  placeholder="tu@email.com"
+                  placeholder="User name"
                   placeholderTextColor={COLORS.textSecondary}
                   keyboardType="email-address"
                   autoCapitalize="none"
@@ -135,17 +169,23 @@ export const LoginScreen: React.FC = () => {
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Contraseña</Text>
-              <View style={[styles.inputRow, isPasswordFocused && styles.inputRowFocused]}>
+              <View style={[
+                styles.inputContainer,
+                isPasswordFocused && styles.inputContainerFocused
+              ]}>
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="••••••••"
+                  placeholder="Password"
                   placeholderTextColor={COLORS.textSecondary}
                   secureTextEntry
                   style={styles.textInput}
                   onFocus={() => setIsPasswordFocused(true)}
                   onBlur={() => setIsPasswordFocused(false)}
                 />
+                <TouchableOpacity style={styles.eyeIcon}>
+                  <Text style={styles.eyeIconText}>👁️</Text>
+                </TouchableOpacity>
               </View>
               {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
             </View>
@@ -162,9 +202,29 @@ export const LoginScreen: React.FC = () => {
                 <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
               )}
             </TouchableOpacity>
+
+            {/* OR Separator */}
+            <View style={styles.orContainer}>
+              <View style={styles.orLine} />
+              <Text style={styles.orText}>OR</Text>
+              <View style={styles.orLine} />
+            </View>
+
+            {/* Social Login */}
+            <View style={styles.socialContainer}>
+              <TouchableOpacity style={styles.socialButton}>
+                <Text style={styles.socialIcon}>G</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.socialButton, styles.socialButtonFacebook]}>
+                <Text style={styles.socialIcon}>f</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.socialButton, styles.socialButtonApple]}>
+                <Text style={styles.socialIcon}>🍎</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* Secondary Actions - Minimal */}
+          {/* Footer */}
           <View style={styles.footer}>
             <TouchableOpacity onPress={() => navigation.navigate('Register')}>
               <Text style={styles.registerText}>
@@ -191,84 +251,139 @@ export const LoginScreen: React.FC = () => {
   );
 };
 
-const createStyles = (COLORS: any) => StyleSheet.create({
+const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 70 : 50,
     paddingBottom: 40,
   },
   content: {
     flex: 1,
+    paddingHorizontal: 24,
   },
-  header: {
+  
+  // --- HEADER CON GRADIENTE ---
+  headerContainer: {
+    width: '100%',
+    marginBottom: 0,
+  },
+  gradientHeader: {
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: 40,
+    paddingHorizontal: 24,
+    position: 'relative',
+  },
+  headerContent: {
     alignItems: 'center',
-    marginBottom: 60,
+    zIndex: 1,
   },
   logo: {
-    fontSize: 64,
-    marginBottom: 16,
+    fontSize: 56,
+    marginBottom: 12,
   },
-  title: {
-    fontSize: 48,
-    fontWeight: '800',
-    color: COLORS.text,
-    letterSpacing: -1.5,
-    marginBottom: 8,
+  brandName: {
+    fontSize: 42,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
-  subtitle: {
-    fontSize: 18,
-    color: COLORS.textSecondary,
-    fontWeight: '400',
+  wavyContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+    overflow: 'hidden',
   },
-
-  // --- FORMULARIO SIN CARD ---
-  form: {
+  wavyShape: {
+    position: 'absolute',
+    bottom: 0,
+    left: -50,
+    right: -50,
+    height: 80,
+    borderTopLeftRadius: 100,
+    borderTopRightRadius: 100,
+    transform: [{ translateY: 20 }],
+  },
+  
+  // --- WELCOME SECTION ---
+  welcomeSection: {
+    marginTop: 32,
     marginBottom: 40,
+    alignItems: 'center',
+  },
+  welcomeText: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: COLORS.text,
+    letterSpacing: 0.5,
+  },
+  
+  // --- FORMULARIO ---
+  form: {
+    marginBottom: 32,
   },
   inputGroup: {
-    marginBottom: 28,
+    marginBottom: 24,
   },
   inputLabel: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     color: COLORS.text,
     marginBottom: 10,
     letterSpacing: 0.3,
   },
-  inputRow: {
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.border,
-    paddingBottom: 12,
+  inputContainer: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  inputRowFocused: {
-    borderBottomColor: COLORS.primary,
+  inputContainerFocused: {
+    borderColor: COLORS.primary,
+    borderWidth: 2,
   },
   textInput: {
-    fontSize: 18,
+    fontSize: 16,
     color: COLORS.text,
+    flex: 1,
     padding: 0,
-    height: 40,
-    fontWeight: '500',
+    fontWeight: '400',
+  },
+  eyeIcon: {
+    padding: 4,
+  },
+  eyeIconText: {
+    fontSize: 18,
   },
   errorText: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.error,
-    marginTop: 8,
-    fontWeight: '600',
+    marginTop: 6,
+    fontWeight: '500',
   },
   loginButton: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 18,
-    borderRadius: 12, // Solo un toque de redondeo en botones
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
+    marginTop: 8,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   loginButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   loginButtonText: {
     color: COLORS.background,
@@ -276,13 +391,66 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-
-  // --- PIE DE PÁGINA ---
+  
+  // --- SOCIAL LOGIN ---
+  orContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  orLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  orText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    letterSpacing: 1,
+  },
+  socialContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  socialButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  socialButtonFacebook: {
+    backgroundColor: '#1877F2',
+    borderColor: '#1877F2',
+  },
+  socialButtonApple: {
+    backgroundColor: '#000000',
+    borderColor: '#000000',
+  },
+  socialIcon: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  
+  // --- FOOTER ---
   footer: {
     alignItems: 'center',
+    marginTop: 8,
   },
   registerText: {
-    fontSize: 16,
+    fontSize: 15,
     color: COLORS.textSecondary,
     fontWeight: '400',
   },
@@ -290,7 +458,7 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '700',
   },
-
+  
   // --- SECCIÓN DE DESARROLLO (Solo en modo DEV) ---
   devSection: {
     marginTop: 30,
