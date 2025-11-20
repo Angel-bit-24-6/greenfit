@@ -261,15 +261,12 @@ export const SatisfactionSurveyScreen: React.FC = () => {
 
       {/* Submit Button */}
       <Button
-        title={submitting ? 'Enviando...' : 'Enviar encuesta'}
+        title={submitting ? 'Enviando...' : '👍 Enviar encuesta'}
         onPress={handleSubmit}
         disabled={submitting || !generalRating || !productQuality || !deliveryExperience}
         style={styles.submitButton}
         size="large"
-      >
-        {!submitting && <Text style={styles.submitIcon}>👍</Text>}
-        {submitting && <ActivityIndicator size="small" color={COLORS.background} />}
-      </Button>
+      />
 
       {/* Footer */}
       <Text style={[styles.footerText, { color: COLORS.textSecondary }]}>
@@ -328,7 +325,7 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     gap: 8,
   },
   star: {
-    fontSize: 36,
+    fontSize: 28,
     marginRight: 4,
   },
   ratingLabel: {

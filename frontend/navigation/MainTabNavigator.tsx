@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, StyleSheet, Platform } from 'react-native';
+import { Text, StyleSheet, Platform, View } from 'react-native';
 
 // Screens
 import { HomeScreen } from '../screens/main/HomeScreen';
@@ -9,6 +9,7 @@ import { CartScreen } from '../screens/main/CartScreen';
 import { ProfileScreen } from '../screens/main/ProfileScreen';
 import { useCartStore } from '../stores/cartStore';
 import { useThemeStore } from '../stores/themeStore';
+import { AppHeader } from '../components/AppHeader';
 
 export type MainTabParamList = {
   HomeTab: undefined;
@@ -28,21 +29,23 @@ export const MainTabNavigator: React.FC = () => {
   const tabBarStyles = useMemo(() => createTabBarStyles(COLORS), [currentTheme.id]);
 
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        // Eliminamos los colores por defecto; los manejamos en el icono y label
-        tabBarStyle: [
-          tabBarStyles.tabBar,
-          {
-            backgroundColor: COLORS.background, // Fondo de pantalla, no 'surface'
-          }
-        ],
-        tabBarLabelStyle: tabBarStyles.tabBarLabel,
-        tabBarItemStyle: tabBarStyles.tabBarItem,
-        tabBarBadgeStyle: tabBarStyles.tabBarBadge,
-      }}
-    >
+    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+      <AppHeader />
+      <Tab.Navigator
+        screenOptions={{
+          headerShown: false,
+          // Eliminamos los colores por defecto; los manejamos en el icono y label
+          tabBarStyle: [
+            tabBarStyles.tabBar,
+            {
+              backgroundColor: COLORS.background, // Fondo de pantalla, no 'surface'
+            }
+          ],
+          tabBarLabelStyle: tabBarStyles.tabBarLabel,
+          tabBarItemStyle: tabBarStyles.tabBarItem,
+          tabBarBadgeStyle: tabBarStyles.tabBarBadge,
+        }}
+      >
       <Tab.Screen
         name="HomeTab"
         component={HomeScreen}
@@ -114,10 +117,11 @@ export const MainTabNavigator: React.FC = () => {
             </Text>
           ),
         }}
-      />
-    </Tab.Navigator>
-  );
-};
+        />
+      </Tab.Navigator>
+    </View>
+    );
+  };
 
 const createTabBarStyles = (COLORS: any) => StyleSheet.create({
   tabBar: {

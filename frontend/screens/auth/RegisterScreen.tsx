@@ -8,8 +8,8 @@ import {
   Platform,
   TouchableOpacity,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NavigationProp } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { NavigationProp, RouteProp } from '@react-navigation/native';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuthStore } from '../../stores/authStore';
@@ -64,22 +64,33 @@ const SUBSCRIPTION_PLANS = [
 ];
 
 export const RegisterScreen: React.FC = () => {
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const route = useRoute();
+  const routeParams = route.params as { paymentConfirmed?: boolean; subscriptionPlan?: SubscriptionPlan; userData?: any } | undefined;
+
   const [formData, setFormData] = useState<FormData>({
-    name: '',
-    email: '',
-    phone: '',
-    password: '',
-    confirmPassword: '',
-    subscriptionPlan: 'BASIC',
+    name: routeParams?.userData?.name || '',
+    email: routeParams?.userData?.email || '',
+    phone: routeParams?.userData?.phone || '',
+    password: routeParams?.userData?.password || '',
+    confirmPassword: routeParams?.userData?.password || '',
+    subscriptionPlan: routeParams?.subscriptionPlan || 'BASIC',
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
 
-  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const { login, setLoading: setAuthLoading } = useAuthStore();
   const { getThemeColors, currentTheme, colorMode } = useThemeStore();
   const COLORS = getThemeColors();
   const styles = useMemo(() => createStyles(COLORS, colorMode), [currentTheme.id, colorMode]);
+
+  // Handle payment confirmation
+  React.useEffect(() => {
+    if (routeParams?.paymentConfirmed) {
+      handleRegister(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeParams?.paymentConfirmed]);
 
   const updateField = (field: keyof FormData, value: string | SubscriptionPlan) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -126,8 +137,30 @@ export const RegisterScreen: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleRegister = async () => {
+  const handleContinueToPayment = () => {
     if (!validateForm()) return;
+
+    // Navigate to payment screen
+    (navigation as any).navigate('SubscriptionPayment', {
+      subscriptionPlan: formData.subscriptionPlan,
+      userData: {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        password: formData.password,
+      },
+    });
+  };
+
+  const handleRegister = async (paymentConfirmed: boolean = false) => {
+    if (!paymentConfirmed) {
+      // If payment not confirmed, go to payment first
+      handleContinueToPayment();
+      return;
+    }
+
+    // Skip validation if coming from payment (data already validated)
+    if (!paymentConfirmed && !validateForm()) return;
 
     setLoading(true);
     setAuthLoading(true);
@@ -279,8 +312,8 @@ export const RegisterScreen: React.FC = () => {
           </View>
 
           <Button
-            title={loading ? "Creando cuenta..." : "Crear Cuenta"}
-            onPress={handleRegister}
+            title={loading ? "Creando cuenta..." : "Continuar al Pago"}
+            onPress={() => handleRegister(false)}
             disabled={loading}
             size="large"
             style={styles.registerButton}

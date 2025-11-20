@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -87,8 +87,8 @@ export const OrderTrackingScreen: React.FC = () => {
   const { getThemeColors, currentTheme, colorMode } = useThemeStore();
   const COLORS = getThemeColors();
 
-  const [simulating, setSimulating] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<OrderStatus>('confirmed');
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const styles = useMemo(() => createStyles(COLORS, colorMode), [currentTheme.id, colorMode]);
 
@@ -104,29 +104,61 @@ export const OrderTrackingScreen: React.FC = () => {
     }
   }, [currentOrder]);
 
-  const simulateProgress = () => {
-    if (simulating || currentStatus === 'delivered') return;
+  // Simulación automática de estados cada 2 segundos
+  useEffect(() => {
+    // Limpiar intervalo anterior si existe
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
 
-    setSimulating(true);
+    // Solo simular si no está entregado
+    if (currentStatus === 'delivered') return;
+
     const statusOrder: OrderStatus[] = ['confirmed', 'preparing', 'ready', 'delivered'];
     const currentIndex = statusOrder.indexOf(currentStatus);
     
-    if (currentIndex < statusOrder.length - 1) {
-      const nextStatus = statusOrder[currentIndex + 1];
-      
-      // Simular progreso con delay
-      setTimeout(() => {
-        setCurrentStatus(nextStatus);
-        setSimulating(false);
+    // Si ya está en el último estado, no hacer nada
+    if (currentIndex >= statusOrder.length - 1) return;
+
+    // Usar setTimeout para evitar actualizar durante el renderizado
+    intervalRef.current = setInterval(() => {
+      setCurrentStatus((prevStatus) => {
+        const prevIndex = statusOrder.indexOf(prevStatus);
         
-        if (nextStatus === 'delivered') {
-          ToastManager.success('Pedido Entregado', '¡Tu pedido ha sido entregado exitosamente!');
-        } else {
-          ToastManager.success('Estado Actualizado', `Tu pedido ahora está: ${DELIVERY_STEPS.find(s => s.id === nextStatus)?.label}`);
+        // Si ya está entregado, no avanzar más
+        if (prevIndex >= statusOrder.length - 1) {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          return prevStatus;
         }
-      }, 2000);
-    }
-  };
+
+        const nextStatus = statusOrder[prevIndex + 1];
+        
+        // Usar setTimeout para mostrar notificaciones después del renderizado
+        setTimeout(() => {
+          if (nextStatus === 'delivered') {
+            ToastManager.success('Pedido Entregado', '¡Tu pedido ha sido entregado exitosamente!');
+          } else {
+            const stepLabel = DELIVERY_STEPS.find(s => s.id === nextStatus)?.label || nextStatus;
+            ToastManager.success('Estado Actualizado', `Tu pedido ahora está: ${stepLabel}`);
+          }
+        }, 0);
+
+        return nextStatus;
+      });
+    }, 2000); // 2 segundos
+
+    // Limpiar intervalo cuando el componente se desmonte o cambie el estado
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [currentStatus]);
 
   const currentStepIndex = getStatusIndex(currentStatus);
   const isDelivered = currentStatus === 'delivered';
@@ -266,27 +298,13 @@ export const OrderTrackingScreen: React.FC = () => {
         )}
       </View>
 
-      {/* Simulation Button (for testing) */}
+      {/* Auto-simulation indicator */}
       {!isDelivered && (
-        <TouchableOpacity
-          style={[
-            styles.simulateButton,
-            {
-              backgroundColor: simulating ? COLORS.surfaceElevated : COLORS.primary,
-              borderColor: COLORS.primary,
-            },
-          ]}
-          onPress={simulateProgress}
-          disabled={simulating}
-        >
-          {simulating ? (
-            <ActivityIndicator size="small" color={COLORS.background} />
-          ) : (
-            <Text style={[styles.simulateButtonText, { color: COLORS.background }]}>
-              ⚡ Avanzar Estado (Simulación)
-            </Text>
-          )}
-        </TouchableOpacity>
+        <View style={[styles.simulationIndicator, { backgroundColor: COLORS.primary + '15', borderColor: COLORS.primary + '40' }]}>
+          <Text style={[styles.simulationIndicatorText, { color: COLORS.primary }]}>
+            ⚡ Simulación automática: El estado avanzará cada 2 segundos
+          </Text>
+        </View>
       )}
 
       {/* Satisfaction Survey Button */}
@@ -326,10 +344,12 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
   loadingText: {
     marginTop: 16,
     fontSize: 16,
+    color: COLORS.textSecondary,
   },
   errorText: {
     fontSize: 18,
     fontWeight: '600',
+    color: COLORS.error,
     marginBottom: 24,
     textAlign: 'center',
   },
@@ -349,16 +369,20 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     borderWidth: 1,
     marginBottom: 16,
     alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderColor: COLORS.border,
   },
   orderNumberLabel: {
     fontSize: 14,
     fontWeight: '600',
+    color: COLORS.textSecondary,
     marginBottom: 8,
   },
   orderNumber: {
     fontSize: 28,
     fontWeight: '800',
     letterSpacing: 2,
+    color: COLORS.primary,
   },
   timeCard: {
     padding: 20,
@@ -366,15 +390,19 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     borderWidth: 1,
     marginBottom: 16,
     alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderColor: COLORS.border,
   },
   timeLabel: {
     fontSize: 14,
     fontWeight: '600',
+    color: COLORS.textSecondary,
     marginBottom: 8,
   },
   timeValue: {
     fontSize: 24,
     fontWeight: '800',
+    color: COLORS.text,
   },
   deliveredCard: {
     padding: 24,
@@ -382,6 +410,8 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     borderWidth: 2,
     marginBottom: 16,
     alignItems: 'center',
+    backgroundColor: COLORS.primary + '20',
+    borderColor: COLORS.primary,
   },
   deliveredEmoji: {
     fontSize: 48,
@@ -390,10 +420,12 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
   deliveredTitle: {
     fontSize: 24,
     fontWeight: '800',
+    color: COLORS.primary,
     marginBottom: 8,
   },
   deliveredMessage: {
     fontSize: 16,
+    color: COLORS.text,
     textAlign: 'center',
     lineHeight: 22,
   },
@@ -402,10 +434,13 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: 16,
+    backgroundColor: COLORS.surface,
+    borderColor: COLORS.border,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
+    color: COLORS.text,
     marginBottom: 24,
     letterSpacing: -0.3,
   },
@@ -441,10 +476,12 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
   stepLabel: {
     fontSize: 16,
     fontWeight: '600',
+    color: COLORS.text,
     marginBottom: 4,
   },
   stepDescription: {
     fontSize: 14,
+    color: COLORS.textSecondary,
     lineHeight: 20,
     marginTop: 4,
   },
@@ -453,9 +490,12 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: 16,
+    backgroundColor: COLORS.surface,
+    borderColor: COLORS.border,
   },
   addressText: {
     fontSize: 16,
+    color: COLORS.text,
     lineHeight: 24,
     marginBottom: 12,
   },
@@ -468,24 +508,26 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
   referencesLabel: {
     fontSize: 14,
     fontWeight: '600',
+    color: COLORS.textSecondary,
     marginBottom: 4,
   },
   referencesText: {
     fontSize: 14,
+    color: COLORS.text,
     lineHeight: 20,
   },
-  simulateButton: {
-    padding: 16,
+  simulationIndicator: {
+    padding: 12,
     borderRadius: 12,
-    borderWidth: 2,
+    borderWidth: 1,
     marginBottom: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 52,
   },
-  simulateButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
+  simulationIndicatorText: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   surveyButton: {
     marginBottom: 16,

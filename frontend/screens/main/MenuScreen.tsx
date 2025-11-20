@@ -1,347 +1,243 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
-import { useCatalogStore } from '../../stores/catalogStore';
+import { useProductStore, ProductCategory } from '../../stores/productStore';
 import { useCartStore } from '../../stores/cartStore';
+import { useSubscriptionStore } from '../../stores/subscriptionStore';
 import { useThemeStore } from '../../stores/themeStore';
-import { Button } from '../../components/ui/Button';
 import { ToastManager } from '../../utils/ToastManager';
 import { AlertManager } from '../../utils/AlertManager';
 
+const CATEGORIES: { id: ProductCategory | null; name: string; emoji: string }[] = [
+  { id: null, name: 'Todos', emoji: '📦' },
+  { id: 'FRUITS', name: 'Frutas', emoji: '🍎' },
+  { id: 'VEGETABLES', name: 'Verduras', emoji: '🥬' },
+  { id: 'LEGUMES', name: 'Leguminosas', emoji: '🫘' },
+  { id: 'HERBS', name: 'Hierbas', emoji: '🌿' },
+  { id: 'SNACKS', name: 'Snacks', emoji: '🍪' },
+  { id: 'COFFEE', name: 'Café', emoji: '☕' },
+  { id: 'CHOCOLATE', name: 'Chocolate', emoji: '🍫' },
+  { id: 'PROTEINS', name: 'Proteínas', emoji: '🥚' },
+];
+
 export const MenuScreen: React.FC = () => {
-  const [selectedTab, setSelectedTab] = useState<'plates' | 'ingredients'>('plates');
-  const { catalog, loading, error } = useCatalogStore();
-  const { addItem, error: cartError } = useCartStore();
+  const [selectedCategory, setSelectedCategory] = useState<ProductCategory | null>(null);
+  const { products, loading, error, fetchProducts, filterByCategory } = useProductStore();
+  const { addItem } = useCartStore();
+  const { canAddProduct, validateCategory, subscription } = useSubscriptionStore();
   const { getThemeColors, currentTheme, colorMode } = useThemeStore();
   const COLORS = getThemeColors();
   
-  // Create dynamic styles based on current theme and color mode
   const styles = useMemo(() => createStyles(COLORS, colorMode), [currentTheme.id, colorMode]);
 
-  const handleAddToCart = async (item: any) => {
+  useEffect(() => {
+    fetchProducts({ available: true });
+  }, []);
+
+  useEffect(() => {
+    if (selectedCategory !== null) {
+      filterByCategory(selectedCategory);
+    }
+  }, [selectedCategory]);
+
+  const handleAddToCart = async (product: any) => {
     try {
-      if (selectedTab === 'plates') {
-        // Validate item availability
-        if (!item.available) {
-          ToastManager.noStock(item.name);
-          return;
-        }
+      if (!product.available || product.stock <= 0) {
+        ToastManager.error('Producto no disponible', 'Este producto no está disponible actualmente');
+        return;
+      }
 
-        // Validate price
-        const itemPrice = typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0;
-        if (!itemPrice || itemPrice <= 0) {
-          ToastManager.error('Error', 'El precio del item no es válido');
-          return;
-        }
+      if (!subscription) {
+        AlertManager.alert('Suscripción Requerida', 'Necesitas un plan de suscripción activo para agregar productos al carrito.');
+        return;
+      }
 
-        // Add to cart with validation
-        console.log('🛒 Adding item to cart:', {
-          type: 'plate',
-          plateId: item.id,
-          quantity: 1,
-          price: itemPrice,
-          name: item.name,
-        });
-        
-        const success = await addItem({
-          type: 'plate',
-          plateId: item.id,
-          quantity: 1,
-          price: itemPrice,
-          name: item.name,
-          image: item.image || undefined
-        });
-        
-        console.log('🛒 Add item result:', success);
-
-        if (success) {
-          // Show success toast
-          ToastManager.addedToCart(item.name, item.price);
-        } else {
-          // addItem failed - get error from store for more specific message
-          const errorMessage = cartError || 'No se pudo agregar al carrito';
-          
-          // Check for specific error types
-          if (errorMessage.includes('Configuration not loaded')) {
-            ToastManager.error('Error de configuración', 'La aplicación no está configurada correctamente');
-          } else if (errorMessage.includes('Failed to validate stock') || errorMessage.includes('network')) {
-            ToastManager.networkError();
-          } else {
-            ToastManager.error('Error al agregar', errorMessage);
-          }
-        }
-      } else {
-        // For ingredients - show info about custom plates
-        AlertManager.confirm(
-          'Crear platillo personalizado',
-          'Los ingredientes se pueden usar en platillos personalizados.\n\n¿Te gustaría crear uno?',
-          () => {
-            ToastManager.info('Próximamente', 'Custom Plate Builder estará disponible pronto');
-          }
+      if (!validateCategory(product.category)) {
+        AlertManager.alert(
+          'Plan insuficiente',
+          `Tu plan ${subscription?.plan} no permite productos de la categoría ${product.category}. Considera actualizar tu plan.`
         );
+        return;
+      }
+
+      if (!canAddProduct(product.weightInKg)) {
+        const remaining = subscription ? subscription.limitInKg - subscription.usedKg : 0;
+        AlertManager.alert(
+          'Límite excedido',
+          `No puedes agregar este producto. Te quedan ${remaining.toFixed(2)} kg disponibles.`
+        );
+        return;
+      }
+
+      const success = await addItem(product, 1);
+
+      if (success) {
+        ToastManager.addedToCart(product.name, product.weightInKg);
+      } else {
+        ToastManager.error('Error al agregar', 'No se pudo agregar al carrito. Inténtalo de nuevo.');
       }
     } catch (error) {
       console.error('Error adding to cart:', error);
-      ToastManager.error('Error', 'No se pudo agregar al carrito. Inténtalo de nuevo.');
+      ToastManager.error('Error', 'Ocurrió un error inesperado.');
     }
   };
 
-  const renderPlateItem = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-      activeOpacity={0.92}
-      style={[styles.itemCard, { 
-        backgroundColor: COLORS.background,
-        borderColor: item.available ? COLORS.border : COLORS.error
-      }]}
-      onPress={() => handleAddToCart(item)}
-    >
-      {/* Content Container */}
-      <View style={styles.cardContent}>
-        {/* Header with name and price */}
-        <View style={styles.itemHeader}>
-          <View style={styles.itemTitleContainer}>
-            <Text style={[styles.itemName, { color: COLORS.text }]} numberOfLines={2}>
-              {item.name}
-            </Text>
-          </View>
-          <View style={styles.priceContainer}>
-            <Text style={styles.priceText}>
-              ${item.price?.toFixed(2) || '0.00'}
-            </Text>
-          </View>
-        </View>
-        
-        {/* Description */}
-        {item.description && (
-          <Text style={[styles.itemDescription, { color: COLORS.textSecondary }]} numberOfLines={2}>
-            {item.description}
-          </Text>
-        )}
-        
-        {/* Tags */}
-        {item.tags && item.tags.length > 0 && (
-          <View style={styles.itemTags}>
-            {item.tags.slice(0, 3).map((tag: string) => (
-              <View 
-                key={tag} 
-                style={styles.tag}
-              >
-                <Text style={styles.tagText}>{tag}</Text>
-              </View>
-            ))}
-            {item.tags.length > 3 && (
-              <View style={[styles.tag, { borderColor: COLORS.textSecondary }]}>
-                <Text style={[styles.tagText, { color: COLORS.textSecondary }]}>+{item.tags.length - 3}</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Footer with meta info and action button */}
-        <View style={styles.itemFooter}>
-          <View style={styles.itemMeta}>
-            <View style={styles.metaRow}>
-              <Text style={styles.metaIcon}>⏱️</Text>
-              <Text style={styles.metaText}>
-                {item.preparationTime || 10} min
-              </Text>
-            </View>
-            {!item.available && (
-              <View style={styles.availabilityBadge}>
-                <Text style={styles.availabilityText}>No disponible</Text>
-              </View>
-            )}
-          </View>
-          <TouchableOpacity
-            style={[
-              styles.addButton,
-              { 
-                borderColor: item.available ? COLORS.primary : COLORS.error,
-                backgroundColor: item.available ? 'transparent' : COLORS.error,
-              }
-            ]}
-            onPress={() => handleAddToCart(item)}
-            disabled={!item.available}
-            activeOpacity={0.6}
-          >
-            <Text style={[
-              styles.addButtonText,
-              { 
-                color: item.available ? COLORS.primary : COLORS.background,
-              }
-            ]}>
-              {item.available ? '+' : '✕'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const renderIngredientItem = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-      activeOpacity={0.92}
-      style={[styles.itemCard, { 
-        backgroundColor: COLORS.background,
-        borderColor: COLORS.border
-      }]}
-    >
-      {/* Content Container */}
-      <View style={styles.cardContent}>
-        {/* Header with name and price */}
-        <View style={styles.itemHeader}>
-          <View style={styles.itemTitleContainer}>
-            <Text style={[styles.itemName, { color: COLORS.text }]} numberOfLines={2}>
-              {item.name}
-            </Text>
-          </View>
-          <View style={styles.priceContainer}>
-            <Text style={styles.priceText}>
-              ${item.price?.toFixed(2) || '0.00'}
-            </Text>
-          </View>
-        </View>
-        
-        {/* Description */}
-        {item.description && (
-          <Text style={[styles.itemDescription, { color: COLORS.textSecondary }]} numberOfLines={2}>
-            {item.description}
-          </Text>
-        )}
-        
-        {/* Tags */}
-        {item.tags && item.tags.length > 0 && (
-          <View style={styles.itemTags}>
-            {item.tags.slice(0, 3).map((tag: string) => (
-              <View 
-                key={tag} 
-                style={styles.tag}
-              >
-                <Text style={styles.tagText}>{tag}</Text>
-              </View>
-            ))}
-            {item.tags.length > 3 && (
-              <View style={[styles.tag, { borderColor: COLORS.textSecondary }]}>
-                <Text style={[styles.tagText, { color: COLORS.textSecondary }]}>+{item.tags.length - 3}</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Footer with stock info and action button */}
-        <View style={styles.itemFooter}>
-          <View style={styles.itemMeta}>
-            <View style={styles.metaRow}>
-              <Text style={styles.metaIcon}>📦</Text>
-              <Text style={styles.metaText}>
-                {item.stock > 0 ? `Stock: ${item.stock}` : 'Agotado'}
-              </Text>
-            </View>
-            {item.stock <= 5 && item.stock > 0 && (
-              <View style={[styles.availabilityBadge, { backgroundColor: '#f59e0b' }]}>
-                <Text style={[styles.availabilityText, { color: COLORS.background }]}>¡Pocos disponibles!</Text>
-              </View>
-            )}
-          </View>
-          <TouchableOpacity
-            style={styles.infoButton}
-            onPress={() => {
-              const nutritionInfo = item.nutritionalInfo 
-                ? `\n\n📊 Información nutricional:\n• Calorías: ${item.nutritionalInfo.calories}\n• Proteínas: ${item.nutritionalInfo.protein}g\n• Carbohidratos: ${item.nutritionalInfo.carbs}g\n• Grasas: ${item.nutritionalInfo.fat}g`
-                : '';
-              
-              AlertManager.alert(
-                item.name, 
-                `${item.description || 'Sin descripción'}${nutritionInfo}`
-              );
-            }}
-            activeOpacity={0.6}
-          >
-            <Text style={styles.infoButtonText}>ℹ️</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-
-  if (loading) {
+  const renderProductItem = ({ item }: { item: any }) => {
+    const canAdd = item.available && item.stock > 0 && canAddProduct(item.weightInKg) && validateCategory(item.category);
+    
     return (
-      <View style={[styles.centered, { backgroundColor: COLORS.background }]}>
-        <Text style={[styles.loadingText, { color: COLORS.textSecondary }]}>Cargando menú...</Text>
+      <View
+        style={[styles.itemCard, { 
+          backgroundColor: COLORS.background,
+          borderColor: canAdd ? COLORS.border : COLORS.error
+        }]}
+      >
+        <View style={styles.cardContent}>
+          <View style={styles.itemHeader}>
+            <View style={styles.itemTitleContainer}>
+              <Text style={[styles.itemName, { color: COLORS.text }]} numberOfLines={2}>
+                {item.name}
+              </Text>
+            </View>
+            <View style={styles.weightContainer}>
+              <Text style={styles.weightText}>
+                {item.weightInKg.toFixed(2)} kg
+              </Text>
+            </View>
+          </View>
+          
+          {item.description && (
+            <Text style={[styles.itemDescription, { color: COLORS.textSecondary }]} numberOfLines={2}>
+              {item.description}
+            </Text>
+          )}
+          
+          {item.tags && Array.isArray(item.tags) && item.tags.length > 0 && (
+            <View style={styles.itemTags}>
+              {item.tags.slice(0, 3).map((tag: string) => (
+                <View 
+                  key={tag} 
+                  style={styles.tag}
+                >
+                  <Text style={styles.tagText}>{tag}</Text>
+                </View>
+              ))}
+              {item.tags.length > 3 && (
+                <View style={[styles.tag, { borderColor: COLORS.textSecondary }]}>
+                  <Text style={[styles.tagText, { color: COLORS.textSecondary }]}>+{item.tags.length - 3}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          <View style={styles.itemFooter}>
+            <View style={styles.itemMeta}>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaIcon}>🧑‍🌾</Text>
+                <Text style={styles.metaText}>
+                  {item.producer?.businessName || 'Desconocido'}
+                </Text>
+              </View>
+              {(!item.available || item.stock <= 0) && (
+                <View style={styles.availabilityBadge}>
+                  <Text style={styles.availabilityText}>No disponible</Text>
+                </View>
+              )}
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.addButton,
+                { 
+                  borderColor: canAdd ? COLORS.primary : COLORS.error,
+                  backgroundColor: canAdd ? 'transparent' : COLORS.error,
+                }
+              ]}
+              onPress={() => handleAddToCart(item)}
+              disabled={!canAdd}
+              activeOpacity={0.6}
+            >
+              <Text style={[
+                styles.addButtonText,
+                { 
+                  color: canAdd ? COLORS.primary : COLORS.background,
+                }
+              ]}>
+                {canAdd ? '+' : '✕'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  if (loading && products.length === 0) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: COLORS.background }]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={[styles.loadingText, { color: COLORS.textSecondary }]}>Cargando productos...</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={[styles.centered, { backgroundColor: COLORS.background }]}>
+      <View style={[styles.container, styles.centered, { backgroundColor: COLORS.background }]}>
         <Text style={[styles.errorText, { color: COLORS.error }]}>Error: {error}</Text>
-        <Button
-          title="Reintentar"
-          onPress={() => {
-            // TODO: Reload catalog
-            ToastManager.info('Próximamente', 'Recargar catálogo estará disponible pronto');
-          }}
-        />
       </View>
     );
   }
 
-  const data = selectedTab === 'plates' ? catalog?.plates || [] : catalog?.ingredients || [];
-
   return (
     <View style={[styles.container, { backgroundColor: COLORS.background }]}>
-      {/* Tab Selector */}
-      <View style={[styles.tabContainer, { backgroundColor: COLORS.surface, borderColor: COLORS.border }]}>
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            selectedTab === 'plates' && [styles.activeTab, { backgroundColor: COLORS.primary }]
-          ]}
-          onPress={() => setSelectedTab('plates')}
-        >
-          <Text style={[
-            styles.tabText,
-            { color: selectedTab === 'plates' ? COLORS.background : COLORS.textSecondary },
-            selectedTab === 'plates' && styles.activeTabText
-          ]}>
-            🍽️ Platillos
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            selectedTab === 'ingredients' && [styles.activeTab, { backgroundColor: COLORS.primary }]
-          ]}
-          onPress={() => setSelectedTab('ingredients')}
-        >
-          <Text style={[
-            styles.tabText,
-            { color: selectedTab === 'ingredients' ? COLORS.background : COLORS.textSecondary },
-            selectedTab === 'ingredients' && styles.activeTabText
-          ]}>
-            🥬 Ingredientes
-          </Text>
-        </TouchableOpacity>
+      {/* Category Filter Chips */}
+      <View style={[styles.categoryChipsContainer, { backgroundColor: COLORS.surface, borderBottomColor: COLORS.border }]}>
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={CATEGORIES}
+          keyExtractor={(item) => item.id || 'all'}
+          renderItem={({ item: category }) => (
+            <TouchableOpacity
+              style={[
+                styles.categoryChip,
+                {
+                  backgroundColor: selectedCategory === category.id ? COLORS.primary : COLORS.background,
+                  borderColor: selectedCategory === category.id ? COLORS.primary : COLORS.border,
+                }
+              ]}
+              onPress={() => setSelectedCategory(category.id)}
+            >
+              <Text style={styles.categoryEmoji}>{category.emoji}</Text>
+              <Text style={[
+                styles.categoryChipText,
+                { color: selectedCategory === category.id ? COLORS.background : COLORS.textSecondary }
+              ]}>
+                {category.name}
+              </Text>
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={styles.categoryChipsContent}
+        />
       </View>
 
-      {/* Content */}
+      {/* Products List */}
       <FlatList
-        data={data}
-        renderItem={selectedTab === 'plates' ? renderPlateItem : renderIngredientItem}
+        data={products}
+        renderItem={renderProductItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={[styles.emptyText, { color: COLORS.textSecondary }]}>
-              No hay {selectedTab === 'plates' ? 'platillos' : 'ingredientes'} disponibles
+              No hay productos disponibles en esta categoría
             </Text>
           </View>
         }
@@ -433,20 +329,44 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     color: COLORS.text,
     lineHeight: 24,
   },
-  priceContainer: {
+  weightContainer: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    // Borde sutil en lugar de fondo
     borderWidth: 1,
     borderColor: COLORS.primary,
     borderRadius: 8,
-    minWidth: 65,
+    minWidth: 70,
     alignItems: 'center',
   },
-  priceText: {
-    fontSize: 16,
+  weightText: {
+    fontSize: 14,
     fontWeight: '700',
-    color: COLORS.primary, // Color primario para el precio
+    color: COLORS.primary,
+  },
+  categoryChipsContainer: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  categoryChipsContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  categoryEmoji: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  categoryChipText: {
+    fontWeight: '600',
+    fontSize: 13,
   },
   itemDescription: {
     fontSize: 14,

@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Platform,
   Dimensions,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
@@ -17,12 +18,41 @@ import { useSubscriptionStore } from '../../stores/subscriptionStore';
 import { useProductStore } from '../../stores/productStore';
 import { useProducerStore } from '../../stores/producerStore';
 import { useCartStore } from '../../stores/cartStore';
+import { useOrderStore, type Order } from '../../stores/orderStore_nutrifresco';
 import { useThemeStore } from '../../stores/themeStore';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { AlertManager } from '../../utils/AlertManager';
 import { ToastManager } from '../../utils/ToastManager';
 
 const { width } = Dimensions.get('window');
+
+// Helper function to get plan display name
+const getPlanDisplayName = (plan: string): string => {
+  switch (plan) {
+    case 'BASIC':
+      return 'Básico';
+    case 'STANDARD':
+      return 'Estándar';
+    case 'PREMIUM':
+      return 'Premium';
+    default:
+      return plan;
+  }
+};
+
+// Helper function to get plan emoji
+const getPlanEmoji = (plan: string): string => {
+  switch (plan) {
+    case 'BASIC':
+      return '🥬';
+    case 'STANDARD':
+      return '🌱';
+    case 'PREMIUM':
+      return '🌟';
+    default:
+      return '📦';
+  }
+};
 
 export const HomeScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
@@ -31,6 +61,7 @@ export const HomeScreen: React.FC = () => {
   const { subscription, fetchCurrentSubscription, getRemainingKg, getUsedKg, loading: subscriptionLoading } = useSubscriptionStore();
   const { products, fetchProducts, loading: productsLoading, error: productsError } = useProductStore();
   const { producers, fetchProducers, loading: producersLoading, error: producersError } = useProducerStore();
+  const { orders, fetchOrders, loading: ordersLoading } = useOrderStore();
   const { getTotalItems, getTotalWeightInKg } = useCartStore();
   const { getThemeColors, currentTheme, colorMode } = useThemeStore();
   const COLORS = getThemeColors();
@@ -53,6 +84,7 @@ export const HomeScreen: React.FC = () => {
     fetchCurrentSubscription();
     fetchProducts();
     fetchProducers();
+    fetchOrders();
 
     // Entrance animations
     Animated.parallel([
@@ -85,9 +117,154 @@ export const HomeScreen: React.FC = () => {
       fetchCurrentSubscription(),
       fetchProducts(),
       fetchProducers(),
+      fetchOrders(),
     ]);
     setRefreshing(false);
   };
+
+  // Demo orders data (fallback if no orders)
+  const getDemoOrders = (): Order[] => {
+    const now = new Date();
+    return [
+      {
+        id: 'demo-1',
+        userId: user?.id || '',
+        totalWeightInKg: 3.5,
+        status: 'delivered',
+        deliveryAddress: 'Av. Insurgentes Sur 123, Del Valle',
+        createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        items: [
+          {
+            id: 'demo-item-1',
+            orderId: 'demo-1',
+            productId: 'demo-prod-1',
+            quantity: 2,
+            weightInKg: 2.0,
+            name: 'Tomates Rojos',
+            producerName: 'Granja Orgánica',
+          },
+          {
+            id: 'demo-item-2',
+            orderId: 'demo-1',
+            productId: 'demo-prod-2',
+            quantity: 1,
+            weightInKg: 1.5,
+            name: 'Lechuga Fresca',
+            producerName: 'Granja Orgánica',
+          },
+        ],
+      },
+      {
+        id: 'demo-2',
+        userId: user?.id || '',
+        totalWeightInKg: 5.2,
+        status: 'ready',
+        deliveryAddress: 'Av. Insurgentes Sur 123, Del Valle',
+        createdAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        items: [
+          {
+            id: 'demo-item-3',
+            orderId: 'demo-2',
+            productId: 'demo-prod-3',
+            quantity: 3,
+            weightInKg: 3.0,
+            name: 'Zanahorias',
+            producerName: 'Huerto Local',
+          },
+          {
+            id: 'demo-item-4',
+            orderId: 'demo-2',
+            productId: 'demo-prod-4',
+            quantity: 2,
+            weightInKg: 2.2,
+            name: 'Cebollas',
+            producerName: 'Huerto Local',
+          },
+        ],
+      },
+      {
+        id: 'demo-3',
+        userId: user?.id || '',
+        totalWeightInKg: 2.8,
+        status: 'preparing',
+        deliveryAddress: 'Av. Insurgentes Sur 123, Del Valle',
+        createdAt: new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString(),
+        items: [
+          {
+            id: 'demo-item-5',
+            orderId: 'demo-3',
+            productId: 'demo-prod-5',
+            quantity: 1,
+            weightInKg: 2.8,
+            name: 'Huevos de Campo',
+            producerName: 'Avícola San José',
+          },
+        ],
+      },
+    ];
+  };
+
+  const getStatusLabel = (status: string): string => {
+    switch (status) {
+      case 'pending':
+        return 'Pendiente';
+      case 'confirmed':
+        return 'Confirmado';
+      case 'preparing':
+        return 'En preparación';
+      case 'ready':
+        return 'En camino';
+      case 'delivered':
+        return 'Entregado';
+      case 'cancelled':
+        return 'Cancelado';
+      default:
+        return status;
+    }
+  };
+
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'delivered':
+        return COLORS.primary;
+      case 'ready':
+        return '#3b82f6';
+      case 'preparing':
+        return '#f59e0b';
+      case 'confirmed':
+        return '#10b981';
+      case 'pending':
+        return COLORS.textSecondary;
+      case 'cancelled':
+        return COLORS.error;
+      default:
+        return COLORS.textSecondary;
+    }
+  };
+
+  const getStatusEmoji = (status: string): string => {
+    switch (status) {
+      case 'delivered':
+        return '✅';
+      case 'ready':
+        return '🚚';
+      case 'preparing':
+        return '👨‍🍳';
+      case 'confirmed':
+        return '📦';
+      case 'pending':
+        return '⏳';
+      case 'cancelled':
+        return '❌';
+      default:
+        return '📋';
+    }
+  };
+
+  const recentOrders = orders.length > 0 ? orders.slice(0, 3) : getDemoOrders();
 
   const handleLogout = () => {
     AlertManager.confirmDestructive(
@@ -213,11 +390,25 @@ export const HomeScreen: React.FC = () => {
               activeOpacity={0.8}
             >
               <View style={styles.subscriptionHeader}>
-                <Text style={styles.subscriptionPlan}>
-                  Plan {subscription.plan}
-                </Text>
+                <View style={styles.subscriptionPlanContainer}>
+                  <Text style={styles.subscriptionPlanEmoji}>
+                    {getPlanEmoji(subscription.plan)}
+                  </Text>
+                  <View>
+                    <Text style={styles.subscriptionPlan}>
+                      Plan {getPlanDisplayName(subscription.plan)}
+                    </Text>
+                    <Text style={styles.subscriptionLimit}>
+                      {limitInKg.toFixed(0)} kg/mes
+                    </Text>
+                  </View>
+                </View>
                 <Text style={styles.subscriptionRenewal}>
-                  Renovación: {new Date(subscription.renewalDate).toLocaleDateString()}
+                  Renovación: {new Date(subscription.renewalDate).toLocaleDateString('es-MX', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric'
+                  })}
                 </Text>
               </View>
               <View style={styles.progressBarContainer}>
@@ -245,6 +436,117 @@ export const HomeScreen: React.FC = () => {
               <TouchableOpacity onPress={() => navigation.navigate('SubscriptionSettings' as never)}>
                 <Text style={styles.actionLink}>Elige un plan</Text>
               </TouchableOpacity>
+            </View>
+          )}
+        </Animated.View>
+
+        {/* Recent Orders */}
+        <Animated.View
+          style={[
+            styles.section,
+            { opacity: fadeAnim },
+          ]}
+        >
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Pedidos Recientes</Text>
+            {orders.length > 0 && (
+              <TouchableOpacity onPress={() => navigation.navigate('Orders' as never)}>
+                <Text style={styles.seeAllText}>Ver todos</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          
+          {ordersLoading ? (
+            <View style={styles.loadingContainer}>
+              <Text style={[styles.loadingText, { color: COLORS.textSecondary }]}>
+                Cargando pedidos...
+              </Text>
+            </View>
+          ) : recentOrders.length > 0 ? (
+            <View style={styles.ordersList}>
+              {recentOrders.map((order) => (
+                <TouchableOpacity
+                  key={order.id}
+                  style={[styles.orderCard, { backgroundColor: COLORS.surface, borderColor: COLORS.border }]}
+                  onPress={() => {
+                    if (order.id.startsWith('demo-')) {
+                      // Demo order - show alert
+                      AlertManager.alert(
+                        'Pedido de Demostración',
+                        `Este es un pedido de demostración.\n\nPeso: ${order.totalWeightInKg.toFixed(2)} kg\nEstado: ${getStatusLabel(order.status)}`
+                      );
+                    } else {
+                      (navigation as any).navigate('OrderDetail', { orderId: order.id });
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.orderCardHeader}>
+                    <View style={styles.orderCardLeft}>
+                      <View style={[styles.orderStatusBadge, { backgroundColor: getStatusColor(order.status) + '20' }]}>
+                        <Text style={styles.orderStatusEmoji}>{getStatusEmoji(order.status)}</Text>
+                        <Text style={[styles.orderStatusText, { color: getStatusColor(order.status) }]}>
+                          {getStatusLabel(order.status)}
+                        </Text>
+                      </View>
+                      <Text style={[styles.orderDate, { color: COLORS.textSecondary }]}>
+                        {new Date(order.createdAt).toLocaleDateString('es-MX', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </Text>
+                    </View>
+                    <View style={styles.orderCardRight}>
+                      <Text style={[styles.orderWeight, { color: COLORS.primary }]}>
+                        {order.totalWeightInKg.toFixed(2)} kg
+                      </Text>
+                      {order.id.startsWith('demo-') && (
+                        <Text style={[styles.demoBadge, { color: COLORS.textSecondary }]}>
+                          Demo
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  
+                  <View style={styles.orderItemsPreview}>
+                    {order.items.slice(0, 2).map((item) => (
+                      <View key={item.id} style={styles.orderItemPreview}>
+                        <Text style={[styles.orderItemName, { color: COLORS.text }]}>
+                          {item.quantity}x {item.name}
+                        </Text>
+                        {item.producerName && (
+                          <Text style={[styles.orderItemProducer, { color: COLORS.textSecondary }]}>
+                            🧑‍🌾 {item.producerName}
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                    {order.items.length > 2 && (
+                      <Text style={[styles.orderMoreItems, { color: COLORS.textSecondary }]}>
+                        +{order.items.length - 2} producto{order.items.length - 2 > 1 ? 's' : ''} más
+                      </Text>
+                    )}
+                  </View>
+                  
+                  <View style={[styles.orderCardFooter, { borderTopColor: COLORS.border }]}>
+                    <Text style={[styles.orderId, { color: COLORS.textSecondary }]}>
+                      #{order.id.slice(-8).toUpperCase()}
+                    </Text>
+                    <Text style={styles.orderArrow}>→</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View style={[styles.emptyState, { backgroundColor: COLORS.surface, borderColor: COLORS.border }]}>
+              <Text style={styles.emptyEmoji}>📦</Text>
+              <Text style={[styles.emptyText, { color: COLORS.text }]}>
+                Aún no tienes pedidos
+              </Text>
+              <Text style={[styles.emptySubtext, { color: COLORS.textSecondary }]}>
+                Explora nuestro catálogo y realiza tu primer pedido
+              </Text>
             </View>
           )}
         </Animated.View>
@@ -448,7 +750,7 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
   },
   heroSection: {
     backgroundColor: COLORS.backgroundSecondary,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingTop: 16,
     paddingHorizontal: 20,
     paddingBottom: 32,
     borderBottomWidth: 1,
@@ -520,18 +822,32 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     marginBottom: 20,
   },
   subscriptionHeader: {
+    marginBottom: 16,
+  },
+  subscriptionPlanContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 12,
   },
+  subscriptionPlanEmoji: {
+    fontSize: 32,
+    marginRight: 12,
+  },
   subscriptionPlan: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.primary,
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  subscriptionLimit: {
+    fontSize: 16,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
   },
   subscriptionRenewal: {
     fontSize: 14,
     color: COLORS.textSecondary,
+    textAlign: 'right',
   },
   progressBarContainer: {
     height: 10,
@@ -782,6 +1098,105 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     textAlign: 'center',
     fontWeight: '500',
     marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  loadingContainer: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  ordersList: {
+    gap: 12,
+  },
+  orderCard: {
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  orderCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  orderCardLeft: {
+    flex: 1,
+  },
+  orderCardRight: {
+    alignItems: 'flex-end',
+  },
+  orderStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  orderStatusEmoji: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  orderStatusText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  orderDate: {
+    fontSize: 13,
+    marginTop: 4,
+  },
+  orderWeight: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  demoBadge: {
+    fontSize: 11,
+    fontWeight: '600',
+    fontStyle: 'italic',
+  },
+  orderItemsPreview: {
+    marginBottom: 12,
+  },
+  orderItemPreview: {
+    marginBottom: 8,
+  },
+  orderItemName: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  orderItemProducer: {
+    fontSize: 12,
+    marginLeft: 4,
+  },
+  orderMoreItems: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  orderCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  orderId: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  orderArrow: {
+    fontSize: 18,
+    color: COLORS.primary,
+    fontWeight: '700',
   },
   errorText: {
     fontSize: 14,

@@ -570,6 +570,7 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
   favoritesTitle: {
     fontSize: 18,
     fontWeight: '700',
+    color: COLORS.text,
     marginBottom: 12,
   },
   favoriteCard: {
@@ -577,14 +578,17 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     borderRadius: 8,
     borderWidth: 1,
     marginBottom: 12,
+    backgroundColor: COLORS.background,
   },
   favoriteAddressText: {
     fontSize: 16,
     fontWeight: '600',
+    color: COLORS.text,
     marginBottom: 4,
   },
   favoriteCityText: {
     fontSize: 14,
+    color: COLORS.textSecondary,
   },
   useFavoriteButton: {
     marginTop: 8,
@@ -658,18 +662,22 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
   orderItemName: {
     fontSize: 16,
     fontWeight: '700',
+    color: COLORS.text,
     marginBottom: 4,
   },
   producerName: {
     fontSize: 13,
+    color: COLORS.textSecondary,
     marginBottom: 4,
   },
   orderItemDetails: {
     fontSize: 14,
+    color: COLORS.textSecondary,
   },
   orderItemWeight: {
     fontSize: 16,
     fontWeight: '700',
+    color: COLORS.primary,
   },
   totalContainer: {
     flexDirection: 'row',
@@ -678,14 +686,17 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 2,
+    borderTopColor: COLORS.border,
   },
   totalLabel: {
     fontSize: 20,
     fontWeight: '700',
+    color: COLORS.text,
   },
   totalWeight: {
     fontSize: 24,
     fontWeight: '800',
+    color: COLORS.primary,
   },
   subscriptionInfo: {
     marginTop: 12,
@@ -696,6 +707,7 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
   subscriptionText: {
     fontSize: 14,
     fontWeight: '600',
+    color: COLORS.textSecondary,
   },
   addressText: {
     fontSize: 16,

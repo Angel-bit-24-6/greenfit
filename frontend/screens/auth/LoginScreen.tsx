@@ -11,12 +11,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { useAuthStore } from '../../stores/authStore';
 import { useThemeStore } from '../../stores/themeStore';
+import { useSubscriptionStore } from '../../stores/subscriptionStore';
 import { ToastManager } from '../../utils/ToastManager';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 
@@ -29,9 +31,11 @@ export const LoginScreen: React.FC = () => {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [isEmailFocused, setIsEmailFocused] = useState(false);
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  const { login, setLoading: setAuthLoading } = useAuthStore();
+  const { login, setLoading: setAuthLoading, user, isAuthenticated } = useAuthStore();
+  const { subscription } = useSubscriptionStore();
   const { getThemeColors, currentTheme, colorMode } = useThemeStore();
   const COLORS = getThemeColors();
   
@@ -119,8 +123,12 @@ export const LoginScreen: React.FC = () => {
                 },
               ]}
             >
-              <Text style={styles.logo}>🌱</Text>
-              <Text style={styles.brandName}>GreenFit</Text>
+              <Image 
+                source={require('../../public/logoapp.png')} 
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+              <Text style={[styles.brandName, { color: COLORS.text }]}>NUTRIFRESCO</Text>
             </Animated.View>
             
             {/* Wavy Separator - Simplified */}
@@ -141,7 +149,22 @@ export const LoginScreen: React.FC = () => {
         >
           {/* Welcome Text */}
           <View style={styles.welcomeSection}>
-            <Text style={styles.welcomeText}>Bienvenido de nuevo</Text>
+            <Text style={styles.welcomeText}>
+              {isAuthenticated && user ? `Bienvenido, ${user.name?.split(' ')[0] || 'Usuario'}` : 'Bienvenido de nuevo'}
+            </Text>
+            {isAuthenticated && subscription && (
+              <View style={[styles.subscriptionBadge, { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary }]}>
+                <Text style={[styles.subscriptionBadgeText, { color: COLORS.primary }]}>
+                  {subscription.plan === 'BASIC' && '🥬'} 
+                  {subscription.plan === 'STANDARD' && '🌱'} 
+                  {subscription.plan === 'PREMIUM' && '🌟'} 
+                  {' '}
+                  Plan {subscription.plan === 'BASIC' ? 'Básico' : subscription.plan === 'STANDARD' ? 'Estándar' : 'Premium'}
+                  {' • '}
+                  {subscription.limitInKg} kg/mes
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Form */}
@@ -178,13 +201,19 @@ export const LoginScreen: React.FC = () => {
                   onChangeText={setPassword}
                   placeholder="Password"
                   placeholderTextColor={COLORS.textSecondary}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   style={styles.textInput}
                   onFocus={() => setIsPasswordFocused(true)}
                   onBlur={() => setIsPasswordFocused(false)}
                 />
-                <TouchableOpacity style={styles.eyeIcon}>
-                  <Text style={styles.eyeIconText}>👁️</Text>
+                <TouchableOpacity 
+                  style={styles.eyeIcon}
+                  onPress={() => setShowPassword(!showPassword)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.eyeIconText}>
+                    {showPassword ? '👁️' : '👁️‍🗨️'}
+                  </Text>
                 </TouchableOpacity>
               </View>
               {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
@@ -280,14 +309,14 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     alignItems: 'center',
     zIndex: 1,
   },
-  logo: {
-    fontSize: 56,
-    marginBottom: 12,
+  logoImage: {
+    width: 120,
+    height: 120,
+    marginBottom: 16,
   },
   brandName: {
-    fontSize: 42,
+    fontSize: 32,
     fontWeight: '700',
-    color: '#FFFFFF',
     letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
@@ -321,6 +350,20 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     fontWeight: '600',
     color: COLORS.text,
     letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  subscriptionBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginTop: 8,
+    alignSelf: 'center',
+  },
+  subscriptionBadgeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   
   // --- FORMULARIO ---

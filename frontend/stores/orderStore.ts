@@ -206,36 +206,68 @@ export const useOrderStore = create<OrderState>()(
           set({ isLoadingOrders: true, error: null });
 
           const config = useConfigStore.getState().config;
+          const { useAuthStore } = await import('./authStore');
+          const token = useAuthStore.getState().token;
+
           if (!config) {
             throw new Error('Configuration not loaded');
           }
 
-          const response = await fetch(`${config.api.baseUrl}/orders/user/${userId}`, {
+          if (!token) {
+            throw new Error('Not authenticated');
+          }
+
+          // Usar la ruta correcta del backend nutrifresco: GET /api/orders
+          const response = await fetch(`${config.api.baseUrl}/orders`, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
             },
           });
 
           if (!response.ok) {
-            throw new Error('Failed to fetch orders');
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || 'Failed to fetch orders');
           }
 
           const data = await response.json();
 
-          if (data.ok) {
-            const orders: Order[] = data.data.map((orderData: any) => ({
-              id: orderData.id,
-              items: orderData.items,
-              totalPrice: orderData.totalPrice,
-              status: orderData.status,
-              paymentStatus: orderData.paymentStatus,
-              paymentMethod: orderData.paymentMethod,
-              paymentId: orderData.paymentId,
-              createdAt: orderData.createdAt,
-              updatedAt: orderData.updatedAt,
-              notes: orderData.notes,
-            }));
+          if (data.ok && data.data) {
+            // Mapear la respuesta del backend nutrifresco a la estructura esperada
+            const orders: Order[] = data.data.map((orderData: any) => {
+              // El backend nutrifresco devuelve items con relaciones (product, producer)
+              // Necesitamos convertir esto al formato OrderItem esperado
+              const mappedItems: OrderItem[] = orderData.items?.map((item: any) => {
+                // Calcular precio basado en el producto o usar un valor por defecto
+                const itemPrice = item.product?.price || 0;
+                return {
+                  id: item.id || `item-${item.productId || 'unknown'}`,
+                  type: 'plate' as const, // Asumimos que son platos
+                  plateId: item.productId,
+                  quantity: item.quantity || 1,
+                  price: itemPrice,
+                  name: item.name || item.product?.name || 'Producto desconocido',
+                  image: item.image || item.product?.image,
+                };
+              }) || [];
+
+              // Calcular totalPrice sumando los precios de los items
+              const totalPrice = mappedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+              return {
+                id: orderData.id,
+                items: mappedItems,
+                totalPrice: totalPrice || 0,
+                status: orderData.status || 'pending',
+                paymentStatus: 'completed' as const, // Nutrifresco no tiene paymentStatus, asumimos completed
+                paymentMethod: undefined,
+                paymentId: undefined,
+                createdAt: orderData.createdAt,
+                updatedAt: orderData.updatedAt || orderData.createdAt,
+                notes: orderData.notes,
+              };
+            });
 
             set({ userOrders: orders, isLoadingOrders: false });
             console.log('✅ User orders loaded:', orders.length);

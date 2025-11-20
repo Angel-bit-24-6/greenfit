@@ -7,6 +7,7 @@ import { useAdminStore } from '../stores/adminStore';
 // Auth Screens
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
+import { SubscriptionPaymentScreen } from '../screens/auth/SubscriptionPaymentScreen';
 import EmployeeLoginScreen from '../screens/employee/EmployeeLoginScreen';
 
 // Main Navigation
@@ -22,11 +23,13 @@ import { SatisfactionSurveyScreen } from '../screens/SatisfactionSurveyScreen';
 
 // Settings Screens
 import { ThemeSettingsScreen } from '../screens/main/ThemeSettingsScreen';
+import type { SubscriptionPlan } from '../stores/subscriptionStore';
 
 // Navigation Types
 export type RootStackParamList = {
   Login: undefined;
-  Register: undefined;
+  Register: { paymentConfirmed?: boolean; subscriptionPlan?: SubscriptionPlan; userData?: any } | undefined;
+  SubscriptionPayment: { subscriptionPlan: SubscriptionPlan; userData: { name: string; email: string; phone: string; password: string } };
   Main: undefined;
   CustomPlateBuilder: undefined;
   Checkout: undefined;
@@ -195,6 +198,13 @@ export const AppNavigator: React.FC = () => {
             <Stack.Screen 
               name="Register" 
               component={RegisterScreen}
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen 
+              name="SubscriptionPayment" 
+              component={SubscriptionPaymentScreen}
               options={{
                 headerShown: false,
               }}
