@@ -4,7 +4,7 @@ import { Text, StyleSheet, Platform } from 'react-native';
 
 // Screens
 import { HomeScreen } from '../screens/main/HomeScreen';
-import { MenuScreen } from '../screens/main/MenuScreen';
+import { CatalogScreen } from '../screens/main/CatalogScreen';
 import { CartScreen } from '../screens/main/CartScreen';
 import { ProfileScreen } from '../screens/main/ProfileScreen';
 import { useCartStore } from '../stores/cartStore';
@@ -12,7 +12,7 @@ import { useThemeStore } from '../stores/themeStore';
 
 export type MainTabParamList = {
   HomeTab: undefined;
-  MenuTab: undefined;
+  CatalogTab: undefined;
   CartTab: undefined;
   ProfileTab: undefined;
 };
@@ -62,10 +62,10 @@ export const MainTabNavigator: React.FC = () => {
       />
       
       <Tab.Screen
-        name="MenuTab"
-        component={MenuScreen}
+        name="CatalogTab"
+        component={CatalogScreen}
         options={{
-          tabBarLabel: 'Menú',
+          tabBarLabel: 'Catálogo',
           tabBarIcon: ({ focused }) => (
             <Text style={[
               tabBarStyles.icon,
@@ -73,7 +73,7 @@ export const MainTabNavigator: React.FC = () => {
                 color: focused ? COLORS.primary : COLORS.textSecondary,
               }
             ]}>
-              🍽️
+              📦
             </Text>
           ),
         }}

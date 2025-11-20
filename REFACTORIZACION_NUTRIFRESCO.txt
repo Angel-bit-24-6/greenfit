@@ -1,0 +1,466 @@
+═══════════════════════════════════════════════════════════════════════════════
+  CHECKLIST DE REFACTORIZACIÓN: GREENFIT → NUTRIFRESCO
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 PROGRESO GENERAL: 
+  ✅ FASE 1: Planificación y estructura base - COMPLETADA
+  ✅ FASE 2: Backend - API y lógica de negocio - COMPLETADA  
+  ✅ FASE 3: Frontend - Stores (Zustand) - COMPLETADA
+  🔄 FASE 4: Frontend - Pantallas principales - EN PROGRESO (3/10 completadas)
+    ✅ RegisterScreen
+    ✅ HomeScreen
+    ✅ CatalogScreen
+    ⏳ ProductDetailScreen
+    ⏳ CartScreen
+    ⏳ SubscriptionScreen
+    ⏳ ProducerProfileScreen
+    ⏳ ProfileScreen
+    ⏳ CheckoutScreen
+  ⏳ FASE 5-12: Pendientes
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 FASE 1: PLANIFICACIÓN Y ESTRUCTURA BASE
+═══════════════════════════════════════════════════════════════════════════════
+
+[x] 1.1 Análisis de la estructura actual
+    [x] Revisar modelos de datos existentes (Prisma Schema)
+    [x] Identificar componentes reutilizables
+    [x] Documentar funcionalidades a eliminar (puntos, delivery, etc.)
+    [x] Documentar funcionalidades a mantener (auth, navegación, temas)
+
+[x] 1.2 Diseño de nuevos modelos de datos
+    [x] Definir modelo User (mantener auth, agregar suscripción)
+    [x] Definir modelo Subscription (Básico, Estándar, Premium)
+    [x] Definir modelo Producer (productores locales)
+    [x] Definir modelo Product (con peso en kg, categorías, origen)
+    [x] Definir modelo CartItem (con peso acumulado)
+    [x] Definir modelo Order (con validación de límite kg)
+
+[x] 1.3 Actualizar Prisma Schema
+    [x] Eliminar modelos obsoletos (Plate, Ingredient relacionado a comida)
+    [x] Crear modelos nuevos (Product, Producer, Subscription)
+    [x] Actualizar relaciones entre modelos
+    [x] Agregar campos de peso (weightInKg) donde corresponda
+    [ ] Crear migraciones de base de datos
+
+[x] 1.4 Actualizar seed.ts
+    [x] Crear productores de ejemplo
+    [x] Crear productos de ejemplo con pesos reales
+    [x] Crear usuarios con diferentes planes de suscripción
+    [x] Datos de ejemplo: frutas, verduras, leguminosas, hierbas, proteínas
+
+
+📋 FASE 2: BACKEND - API Y LÓGICA DE NEGOCIO
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ PROGRESO: 2.1 ✅ | 2.2 ✅ | 2.3 ✅ | 2.4 ✅ | 2.5 ✅ | 2.6 ✅
+
+[x] 2.1 Controladores de Autenticación
+    [x] Mantener login/register (sin cambios mayores)
+    [x] Agregar creación de suscripción al registrar usuario
+    [x] Agregar endpoint para obtener plan de suscripción del usuario
+    [x] Agregar endpoint para cambiar plan de suscripción
+
+[x] 2.3 Controladores de Productores
+    [x] Crear ProducerController
+    [x] Endpoint GET /api/producers
+    [x] Endpoint GET /api/producers/:id
+    [x] Endpoint POST /api/producers/register (registro de productor)
+    [x] Endpoint PUT /api/producers/:id (actualizar perfil)
+
+[x] 2.4 Controladores de Suscripción
+    [x] Crear SubscriptionController
+    [x] Endpoint GET /api/subscription/current (plan actual del usuario)
+    [x] Endpoint POST /api/subscription/change (cambiar plan)
+    [x] Endpoint GET /api/subscription/usage (kg usados y restantes)
+    [x] Validar límites antes de permitir cambio de plan
+    [x] Endpoint POST /api/subscription/validate (validar peso antes de agregar)
+
+[x] 2.2 Controladores de Productos
+    [x] Crear ProductController con CRUD
+    [x] Endpoint GET /api/products (con filtros por categoría)
+    [x] Endpoint GET /api/products/:id (detalles del producto)
+    [x] Endpoint GET /api/products/by-producer/:producerId
+    [x] Endpoint POST /api/products (solo para productores)
+    [x] Validar que el productor existe y está autenticado
+
+[x] 2.5 Controladores de Carrito
+    [x] Refactorizar CartController
+    [x] Eliminar lógica de puntos/precios
+    [x] Agregar validación de peso total (kg)
+    [x] Endpoint POST /api/cart/add (validar límite de kg)
+    [x] Endpoint GET /api/cart (mostrar peso total y límite restante)
+    [x] Endpoint PUT /api/cart/update (actualizar cantidad, recalcular peso)
+    [x] Endpoint DELETE /api/cart/remove/:itemId
+    [x] Endpoint DELETE /api/cart/clear
+    [x] Validación: No permitir agregar si excede límite mensual
+    [x] Validación de categorías según plan
+
+[x] 2.6 Controladores de Pedidos
+    [x] Refactorizar OrderController
+    [x] Endpoint POST /api/orders/create (validar límite antes de crear)
+    [x] Calcular peso total del pedido
+    [x] Validar que no exceda el límite de suscripción
+    [x] Actualizar usedKg en suscripción al crear pedido
+    [x] Endpoint GET /api/orders (historial de pedidos)
+    [x] Endpoint GET /api/orders/:id (detalles del pedido)
+
+
+📋 FASE 3: FRONTEND - STORES (ZUSTAND)
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ PROGRESO: 3.1 ✅ | 3.2 ✅ | 3.3 ✅ | 3.4 ✅ | 3.5 ✅ | 3.6 ✅
+
+[x] 3.1 AuthStore (actualizar)
+    [x] Mantener login/logout
+    [ ] Agregar información de suscripción al estado del usuario
+    [ ] Agregar métodos para obtener plan actual
+    [ ] Agregar métodos para cambiar plan
+
+[x] 3.2 SubscriptionStore (nuevo)
+    [x] Estado: plan actual, kg usados, kg restantes, fecha renovación
+    [x] Acción: fetchCurrentSubscription()
+    [x] Acción: changePlan(planId)
+    [x] Acción: getRemainingKg()
+    [x] Acción: getUsedKg()
+    [x] Validación: canAddProduct(weightInKg)
+    [x] Validación: validateCategory(category)
+
+[x] 3.3 ProductStore (nuevo, reemplaza CatalogStore)
+    [x] Estado: products[], loading, error, filters
+    [x] Acción: fetchProducts(filters?)
+    [x] Acción: fetchProductById(id)
+    [x] Acción: fetchProductsByProducer(producerId)
+    [x] Acción: filterByCategory(category)
+    [x] Filtros: categoría, productor, disponibilidad
+
+[x] 3.4 ProducerStore (nuevo)
+    [x] Estado: producers[], selectedProducer, loading
+    [x] Acción: fetchProducers()
+    [x] Acción: fetchProducerById(id)
+    [x] Acción: registerProducer(data)
+
+[x] 3.5 CartStore (refactorizar completamente)
+    [x] ELIMINAR: lógica de puntos, precios
+    [x] AGREGAR: peso total acumulado (totalWeightInKg)
+    [x] Estado: items[], totalWeightInKg, limitInKg, remainingKg
+    [x] Acción: addItem(productId, quantity) - validar límite
+    [x] Acción: updateQuantity(itemId, quantity) - recalcular peso
+    [x] Acción: removeItem(itemId)
+    [x] Acción: clearCart()
+    [x] Acción: validateWeight(weightToAdd) - retorna boolean
+    [x] Validación en tiempo real antes de agregar
+    [x] Validación de categorías según plan
+
+[x] 3.6 OrderStore (refactorizar)
+    [x] Estado: orders[], currentOrder, loading
+    [x] Acción: createOrder() - validar límite antes
+    [x] Acción: fetchOrders()
+    [x] Acción: fetchOrderById(id)
+
+
+📋 FASE 4: FRONTEND - PANTALLAS PRINCIPALES
+═══════════════════════════════════════════════════════════════════════════════
+
+[ ] 4.1 LoginScreen (mantener diseño actual)
+    [ ] Mantener diseño con gradiente y línea ondulada
+    [ ] Sin cambios funcionales
+
+[x] 4.2 RegisterScreen (actualizar)
+    [x] Agregar selección de plan de suscripción inicial
+    [x] Mostrar límites de cada plan durante registro
+    [x] Validar selección de plan
+    [x] Integrar con tema dinámico
+
+[x] 4.3 HomeScreen (refactorizar)
+    [x] ELIMINAR: stats de puntos, comida preparada
+    [x] AGREGAR: Resumen de suscripción (plan, kg usados/restantes)
+    [x] AGREGAR: Productos destacados de temporada
+    [x] AGREGAR: Productores destacados
+    [x] Mostrar barra de progreso de kg usados
+    [x] Diseño plano, sin cards con sombra
+
+[x] 4.4 CatalogScreen (nuevo, reemplaza MenuScreen)
+    [x] Lista de productos con filtros
+    [x] Filtros: categoría (frutas, verduras, leguminosas, hierbas, proteínas)
+    [x] Cada producto muestra: nombre, peso, productor, origen
+    [x] Botón "Agregar" con validación de límite
+    [x] Validación de categoría según plan
+    [x] Diseño plano con líneas divisorias
+
+[ ] 4.5 ProductDetailScreen (nuevo)
+    [ ] Detalles completos del producto
+    [ ] Información del productor
+    [ ] Selector de cantidad (con peso total calculado)
+    [ ] Validación visual del límite restante
+    [ ] Botón "Agregar al carrito" con validación
+
+        [x] 4.6 CartScreen (refactorizar completamente)
+            [x] ELIMINAR: precios, total en dinero
+            [x] AGREGAR: Peso total acumulado (kg)
+            [x] AGREGAR: Límite del plan (kg)
+            [x] AGREGAR: Peso restante disponible (kg)
+            [x] AGREGAR: Barra de progreso visual
+            [x] Mostrar peso por item
+            [x] Validación: deshabilitar checkout si excede límite
+            [x] Mensaje claro si intenta agregar más de lo permitido
+
+[ ] 4.7 CheckoutScreen (refactorizar)
+    [ ] Resumen del pedido con peso total
+    [ ] Validación final de límite
+    [ ] Confirmación de dirección de entrega
+    [ ] Proceso de confirmación del pedido
+
+[ ] 4.8 SubscriptionScreen (nuevo)
+    [ ] Mostrar plan actual
+    [ ] Mostrar kg usados y restantes
+    [ ] Mostrar fecha de renovación
+    [ ] Opción para cambiar de plan
+    [ ] Advertencia si ya usó parte del límite
+    [ ] Comparación de planes (tabla)
+
+[ ] 4.9 ProducerProfileScreen (nuevo)
+    [ ] Perfil del productor
+    [ ] Lista de productos del productor
+    [ ] Información de contacto
+    [ ] Origen/ubicación
+
+[ ] 4.10 ProfileScreen (actualizar)
+    [ ] Mantener información básica
+    [ ] Agregar sección de suscripción
+    [ ] Link a SubscriptionScreen
+    [ ] Historial de pedidos
+
+
+📋 FASE 5: FRONTEND - COMPONENTES UI
+═══════════════════════════════════════════════════════════════════════════════
+
+[ ] 5.1 Componentes de Producto
+    [ ] ProductCard (plano, sin sombra, con línea divisoria)
+    [ ] ProductListItem (para listas)
+    [ ] ProductDetailView
+    [ ] WeightDisplay (muestra peso en kg de forma destacada)
+    [ ] ProducerBadge (badge con nombre del productor)
+
+[ ] 5.2 Componentes de Carrito
+    [ ] CartItem (muestra peso del item)
+    [ ] WeightProgressBar (barra de progreso de kg usados)
+    [ ] RemainingWeightDisplay (kg restantes disponibles)
+    [ ] LimitWarning (advertencia cuando está cerca del límite)
+
+[ ] 5.3 Componentes de Suscripción
+    [ ] SubscriptionCard (plan actual)
+    [ ] PlanComparisonTable (comparación de planes)
+    [ ] PlanSelector (selector de plan)
+    [ ] UsageDisplay (kg usados/restantes)
+
+[ ] 5.4 Componentes Generales
+    [ ] FilterBar (filtros de categoría, productor)
+    [ ] CategoryChip (chip de categoría)
+    [ ] ProducerCard (tarjeta de productor)
+    [ ] EmptyState (estados vacíos con mensajes claros)
+
+[ ] 5.5 Componentes de Validación
+    [ ] WeightValidator (valida si se puede agregar producto)
+    [ ] LimitExceededAlert (alerta cuando excede límite)
+    [ ] SubscriptionRequiredModal (si no tiene suscripción activa)
+
+
+📋 FASE 6: DISEÑO Y ESTILOS
+═══════════════════════════════════════════════════════════════════════════════
+
+[ ] 6.1 Actualizar ThemeStore
+    [ ] Mantener sistema de temas actual
+    [ ] Ajustar colores principales (verde fresco + neutro)
+    [ ] Asegurar compatibilidad dark/light mode
+    [ ] Actualizar paletas de colores según nuevo branding
+
+[ ] 6.2 Aplicar diseño plano
+    [ ] ELIMINAR: todas las sombras (shadowColor, shadowOffset, etc.)
+    [ ] ELIMINAR: elevation en Android
+    [ ] AGREGAR: líneas divisorias (borderBottom, borderTop)
+    [ ] AGREGAR: espaciado generoso entre elementos
+    [ ] Usar bordes sutiles en lugar de sombras
+
+[ ] 6.3 Actualizar estilos de componentes
+    [ ] Refactorizar todos los StyleSheet.create
+    [ ] Eliminar estilos de cards con sombra
+    [ ] Aplicar diseño plano consistente
+    [ ] Asegurar contraste adecuado en dark mode
+
+[ ] 6.4 Animaciones suaves
+    [ ] Mantener animaciones existentes (fade, slide)
+    [ ] Agregar animación al agregar producto al carrito
+    [ ] Animación de barra de progreso de peso
+    [ ] Transiciones suaves entre pantallas
+    [ ] Feedback visual en botones (opacity, scale)
+
+
+📋 FASE 7: VALIDACIONES Y LÓGICA DE NEGOCIO
+═══════════════════════════════════════════════════════════════════════════════
+
+[ ] 7.1 Validación de límites de peso
+    [ ] Validar antes de agregar al carrito
+    [ ] Validar antes de actualizar cantidad
+    [ ] Validar antes de crear pedido
+    [ ] Mensajes de error claros y específicos
+    [ ] Mostrar cuántos kg faltan para el límite
+
+[ ] 7.2 Validación de suscripción
+    [ ] Verificar que usuario tenga suscripción activa
+    [ ] Validar que plan permita categoría de producto
+    [ ] Básico: solo frutas y verduras
+    [ ] Estándar: + leguminosas, hierbas, snacks, café, chocolate
+    [ ] Premium: + proteínas
+
+[ ] 7.3 Validación de cambio de plan
+    [ ] Advertir si ya usó parte del límite actual
+    [ ] Calcular nuevo límite según plan seleccionado
+    [ ] Validar que productos en carrito sean compatibles con nuevo plan
+    [ ] Confirmación antes de cambiar
+
+[ ] 7.4 Cálculo de peso
+    [ ] Sumar peso de todos los items en carrito
+    [ ] Calcular peso por cantidad (peso unitario × cantidad)
+    [ ] Mostrar peso total en tiempo real
+    [ ] Actualizar peso restante dinámicamente
+
+
+📋 FASE 8: NAVEGACIÓN
+═══════════════════════════════════════════════════════════════════════════════
+
+[ ] 8.1 Actualizar AppNavigator
+    [ ] Mantener estructura de navegación principal
+    [ ] Agregar rutas nuevas (Subscription, ProductDetail, ProducerProfile)
+    [ ] Actualizar tipos de navegación (RootStackParamList)
+
+[ ] 8.2 Actualizar MainTabNavigator
+    [ ] Mantener tabs principales (Home, Catalog, Cart, Profile)
+    [ ] Renombrar "MenuTab" a "CatalogTab"
+    [ ] Actualizar iconos si es necesario
+
+[ ] 8.3 Navegación de flujo de compra
+    [ ] Home → Catalog → ProductDetail → Cart → Checkout
+    [ ] Agregar navegación a ProducerProfile desde productos
+    [ ] Agregar navegación a SubscriptionScreen desde Profile
+
+
+📋 FASE 9: SERVICIOS Y API
+═══════════════════════════════════════════════════════════════════════════════
+
+[ ] 9.1 ProductService (nuevo)
+    [ ] getProducts(filters)
+    [ ] getProductById(id)
+    [ ] getProductsByProducer(producerId)
+    [ ] createProduct(data) - solo para productores
+
+[ ] 9.2 ProducerService (nuevo)
+    [ ] getProducers()
+    [ ] getProducerById(id)
+    [ ] registerProducer(data)
+
+[ ] 9.3 SubscriptionService (nuevo)
+    [ ] getCurrentSubscription()
+    [ ] changePlan(planId)
+    [ ] getUsage() - kg usados y restantes
+
+[ ] 9.4 CartService (refactorizar)
+    [ ] ELIMINAR: lógica de precios
+    [ ] AGREGAR: validación de peso
+    [ ] addItem(productId, quantity) - con validación
+    [ ] updateQuantity(itemId, quantity) - recalcular peso
+    [ ] getCart() - incluir peso total y límite
+
+[ ] 9.5 OrderService (refactorizar)
+    [ ] createOrder() - validar límite antes
+    [ ] getOrders()
+    [ ] getOrderById(id)
+
+
+📋 FASE 10: TESTING Y VALIDACIÓN
+═══════════════════════════════════════════════════════════════════════════════
+
+[ ] 10.1 Testing de validaciones
+    [ ] Probar límite de kg en cada plan
+    [ ] Probar agregar producto que excede límite
+    [ ] Probar cambio de plan con carrito lleno
+    [ ] Probar validación de categorías por plan
+
+[ ] 10.2 Testing de UI
+    [ ] Verificar diseño plano (sin sombras)
+    [ ] Verificar dark/light mode
+    [ ] Verificar animaciones suaves
+    [ ] Verificar responsive en diferentes tamaños
+
+[ ] 10.3 Testing de flujos
+    [ ] Flujo completo: registro → selección plan → agregar productos → checkout
+    [ ] Flujo de cambio de plan
+    [ ] Flujo de productor (registro → publicar productos)
+
+[ ] 10.4 Testing de integración
+    [ ] Verificar comunicación frontend-backend
+    [ ] Verificar persistencia de datos
+    [ ] Verificar sincronización de carrito
+
+
+📋 FASE 11: LIMPIEZA Y OPTIMIZACIÓN
+═══════════════════════════════════════════════════════════════════════════════
+
+[ ] 11.1 Eliminar código obsoleto
+    [ ] Eliminar referencias a "puntos"
+    [ ] Eliminar referencias a "precios" en carrito
+    [ ] Eliminar modelos de comida preparada (Plate, Ingredient antiguos)
+    [ ] Limpiar imports no utilizados
+
+[ ] 11.2 Optimización
+    [ ] Optimizar queries de base de datos
+    [ ] Agregar índices en campos de búsqueda
+    [ ] Optimizar imágenes de productos
+    [ ] Lazy loading de productos
+
+[ ] 11.3 Documentación
+    [ ] Actualizar README con nueva estructura
+    [ ] Documentar nuevos modelos de datos
+    [ ] Documentar API endpoints
+    [ ] Documentar flujos de usuario
+
+
+📋 FASE 12: MIGRACIÓN DE DATOS (si aplica)
+═══════════════════════════════════════════════════════════════════════════════
+
+[ ] 12.1 Script de migración
+    [ ] Si hay datos existentes, crear script de migración
+    [ ] Convertir usuarios existentes a plan por defecto
+    [ ] Limpiar datos obsoletos (platos, ingredientes antiguos)
+
+[ ] 12.2 Backup
+    [ ] Hacer backup de base de datos antes de migración
+    [ ] Documentar proceso de rollback si es necesario
+
+
+═══════════════════════════════════════════════════════════════════════════════
+  NOTAS IMPORTANTES
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️ CAMBIOS CRÍTICOS:
+- Sistema de puntos → Sistema de kilogramos
+- Delivery de comida → Marketplace de productos agrícolas
+- Sin precios monetarios en carrito (solo peso)
+- Validación estricta de límites por plan
+- Diseño completamente plano (sin sombras)
+
+🎯 PRIORIDADES:
+1. Backend: Modelos de datos y validaciones
+2. Frontend: Stores y lógica de negocio
+3. UI: Diseño plano y componentes
+4. Testing: Validaciones y flujos completos
+
+📝 CONSIDERACIONES:
+- Mantener sistema de autenticación actual
+- Mantener sistema de temas (ajustar colores)
+- Mantener estructura de navegación base
+- Priorizar experiencia del usuario (mensajes claros)
+
+═══════════════════════════════════════════════════════════════════════════════
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,23 +6,26 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuthStore } from '../../stores/authStore';
+import { useThemeStore } from '../../stores/themeStore';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import AuthService from '../../services/authService';
 import { ToastManager } from '../../utils/ToastManager';
+import type { SubscriptionPlan } from '../../stores/subscriptionStore';
 
 interface FormData {
   name: string;
   email: string;
-  phone:string;
+  phone: string;
   password: string;
   confirmPassword: string;
+  subscriptionPlan: SubscriptionPlan;
 }
 
 interface FormErrors {
@@ -33,6 +36,33 @@ interface FormErrors {
   confirmPassword?: string;
 }
 
+const SUBSCRIPTION_PLANS = [
+  {
+    id: 'BASIC' as SubscriptionPlan,
+    name: 'Básico',
+    limit: 5,
+    description: 'Solo frutas y verduras',
+    features: ['Frutas', 'Verduras'],
+    emoji: '🥬',
+  },
+  {
+    id: 'STANDARD' as SubscriptionPlan,
+    name: 'Estándar',
+    limit: 8,
+    description: 'Frutas, verduras + más',
+    features: ['Frutas', 'Verduras', 'Leguminosas', 'Hierbas', 'Snacks', 'Café', 'Chocolate'],
+    emoji: '🌱',
+  },
+  {
+    id: 'PREMIUM' as SubscriptionPlan,
+    name: 'Premium',
+    limit: 10,
+    description: 'Todo lo anterior + proteínas',
+    features: ['Todo del Estándar', 'Proteínas frescas'],
+    emoji: '🌟',
+  },
+];
+
 export const RegisterScreen: React.FC = () => {
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -40,18 +70,22 @@ export const RegisterScreen: React.FC = () => {
     phone: '',
     password: '',
     confirmPassword: '',
+    subscriptionPlan: 'BASIC',
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
 
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const { login, setLoading: setAuthLoading } = useAuthStore();
+  const { getThemeColors, currentTheme, colorMode } = useThemeStore();
+  const COLORS = getThemeColors();
+  const styles = useMemo(() => createStyles(COLORS, colorMode), [currentTheme.id, colorMode]);
 
-  const updateField = (field: keyof FormData, value: string) => {
+  const updateField = (field: keyof FormData, value: string | SubscriptionPlan) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     // Clear error when user starts typing
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: undefined }));
+    if (errors[field as keyof FormErrors]) {
+      setErrors(prev => ({ ...prev, [field as keyof FormErrors]: undefined }));
     }
   };
 
@@ -99,17 +133,17 @@ export const RegisterScreen: React.FC = () => {
     setAuthLoading(true);
 
     try {
-      // Use real authentication service
+      // Use real authentication service with subscription plan
       const response = await AuthService.register({
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
-        password: formData.password
+        password: formData.password,
+        subscriptionPlan: formData.subscriptionPlan,
       });
 
       if (response.ok && response.data) {
         // Registration successful
-        // Convert null to undefined for phone field to match User type
         const user = {
           ...response.data.user,
           phone: response.data.user.phone ?? undefined,
@@ -131,16 +165,21 @@ export const RegisterScreen: React.FC = () => {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: COLORS.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
-          <Text style={styles.title}>🌱 Únete a GreenFit</Text>
-          <Text style={styles.subtitle}>Crea tu cuenta y comienza tu viaje saludable</Text>
+          <Text style={[styles.title, { color: COLORS.text }]}>🌱 Únete a NUTRIFRESCO</Text>
+          <Text style={[styles.subtitle, { color: COLORS.textSecondary }]}>
+            Crea tu cuenta y accede a productos frescos locales
+          </Text>
         </View>
 
-        <View style={styles.form}>
+        <View style={[styles.form, { backgroundColor: COLORS.surface, borderColor: COLORS.border }]}>
           <Input
             label="Nombre completo"
             value={formData.name}
@@ -192,6 +231,53 @@ export const RegisterScreen: React.FC = () => {
             required
           />
 
+          {/* Plan Selection */}
+          <View style={styles.planSection}>
+            <Text style={[styles.planSectionTitle, { color: COLORS.text }]}>
+              Selecciona tu plan de suscripción
+            </Text>
+            <Text style={[styles.planSectionSubtitle, { color: COLORS.textSecondary }]}>
+              Puedes cambiarlo después
+            </Text>
+
+            <View style={styles.plansContainer}>
+              {SUBSCRIPTION_PLANS.map((plan) => {
+                const isSelected = formData.subscriptionPlan === plan.id;
+                return (
+                  <TouchableOpacity
+                    key={plan.id}
+                    style={[
+                      styles.planCard,
+                      {
+                        backgroundColor: isSelected ? COLORS.primaryLight : COLORS.surface,
+                        borderColor: isSelected ? COLORS.primary : COLORS.border,
+                        borderWidth: isSelected ? 2 : 1,
+                      },
+                    ]}
+                    onPress={() => updateField('subscriptionPlan', plan.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.planEmoji}>{plan.emoji}</Text>
+                    <Text style={[styles.planName, { color: COLORS.text }]}>
+                      {plan.name}
+                    </Text>
+                    <Text style={[styles.planLimit, { color: COLORS.primary }]}>
+                      {plan.limit} kg/mes
+                    </Text>
+                    <Text style={[styles.planDescription, { color: COLORS.textSecondary }]}>
+                      {plan.description}
+                    </Text>
+                    {isSelected && (
+                      <View style={[styles.selectedBadge, { backgroundColor: COLORS.primary }]}>
+                        <Text style={styles.selectedText}>✓ Seleccionado</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           <Button
             title={loading ? "Creando cuenta..." : "Crear Cuenta"}
             onPress={handleRegister}
@@ -201,7 +287,9 @@ export const RegisterScreen: React.FC = () => {
           />
 
           <View style={styles.divider}>
-            <Text style={styles.dividerText}>¿Ya tienes cuenta?</Text>
+            <Text style={[styles.dividerText, { color: COLORS.textSecondary }]}>
+              ¿Ya tienes cuenta?
+            </Text>
           </View>
 
           <Button
@@ -213,7 +301,7 @@ export const RegisterScreen: React.FC = () => {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>
+          <Text style={[styles.footerText, { color: COLORS.textSecondary }]}>
             Al crear una cuenta, aceptas nuestros{'\n'}
             Términos de Servicio y Política de Privacidad
           </Text>
@@ -223,45 +311,88 @@ export const RegisterScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
     padding: 24,
+    paddingBottom: 40,
   },
   header: {
     alignItems: 'center',
     marginBottom: 32,
+    marginTop: 20,
   },
   title: {
     fontSize: 32,
-    fontWeight: 'bold',
-    color: '#15803d',
+    fontWeight: '800',
     marginBottom: 8,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6b7280',
     textAlign: 'center',
     lineHeight: 22,
   },
   form: {
-    backgroundColor: 'white',
     padding: 24,
     borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    borderWidth: 1,
+  },
+  planSection: {
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  planSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  planSectionSubtitle: {
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  plansContainer: {
+    gap: 12,
+  },
+  planCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  planEmoji: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  planName: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  planLimit: {
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  planDescription: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  selectedBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  selectedText: {
+    color: COLORS.background,
+    fontSize: 12,
+    fontWeight: '700',
   },
   registerButton: {
     marginTop: 8,
@@ -273,7 +404,6 @@ const styles = StyleSheet.create({
   },
   dividerText: {
     fontSize: 16,
-    color: '#6b7280',
   },
   footer: {
     marginTop: 24,
@@ -281,7 +411,6 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
-    color: '#9ca3af',
     textAlign: 'center',
     lineHeight: 18,
   },

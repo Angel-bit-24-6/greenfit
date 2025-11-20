@@ -4,7 +4,6 @@ import { StyleSheet, View } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { AppNavigator } from './navigation/AppNavigator';
 import { useConfigStore } from './stores/configStore';
-import { useCatalogStore } from './stores/catalogStore';
 import { useThemeStore } from './stores/themeStore';
 import { toastConfig } from './config/toastConfig';
 import { AlertManagerProvider } from './utils/AlertManager';
@@ -14,7 +13,6 @@ import { ToastManager } from './utils/ToastManager';
 
 export default function App() {
   const { setAppConfig, setThemeConfig } = useConfigStore();
-  const { fetchCatalog } = useCatalogStore();
   const { initializeTheme } = useThemeStore();
 
   useEffect(() => {
@@ -22,8 +20,6 @@ export default function App() {
     initializeTheme();
     // Load configurations
     loadConfigurations();
-    // Load catalog data using the store
-    loadInitialData();
   }, []);
 
   const loadConfigurations = async () => {
@@ -54,19 +50,6 @@ export default function App() {
       console.error('❌ Error loading configurations:', error);
       ToastManager.error('Error', 'No se pudieron cargar las configuraciones');
     }
-  };
-
-  const loadInitialData = async () => {
-    // Wait a moment for config to load
-    setTimeout(async () => {
-      try {
-        console.log('🚀 Loading initial catalog data...');
-        await fetchCatalog();
-      } catch (error) {
-        console.error('❌ Error loading initial data:', error);
-        // Don't show alert for catalog errors, just log them
-      }
-    }, 500); // Increased timeout to ensure config is loaded
   };
 
   return (

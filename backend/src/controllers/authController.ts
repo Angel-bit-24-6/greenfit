@@ -3,6 +3,7 @@ import { prisma } from '../index';
 import { CustomError } from '../middleware/errorHandler';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { SubscriptionPlan } from '@prisma/client';
 
 // Helper function to safely parse JSON preferences
 const parsePreferences = (preferences: any): any => {
@@ -50,6 +51,20 @@ export class AuthController {
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+      // Obtener plan de suscripción del body (por defecto BASIC)
+      const { subscriptionPlan = 'BASIC' } = req.body;
+      const validPlans: SubscriptionPlan[] = [SubscriptionPlan.BASIC, SubscriptionPlan.STANDARD, SubscriptionPlan.PREMIUM];
+      const selectedPlan = validPlans.includes(subscriptionPlan as SubscriptionPlan) 
+        ? (subscriptionPlan as SubscriptionPlan) 
+        : SubscriptionPlan.BASIC;
+
+      // Definir límites por plan
+      const planLimits: Record<SubscriptionPlan, number> = {
+        [SubscriptionPlan.BASIC]: 5.0,
+        [SubscriptionPlan.STANDARD]: 8.0,
+        [SubscriptionPlan.PREMIUM]: 10.0
+      };
+
       // Create user
       const user = await prisma.user.create({
         data: {
@@ -59,10 +74,24 @@ export class AuthController {
           password: hashedPassword,
           role: 'customer',
           preferences: JSON.stringify({
-            dietaryRestrictions: [],
-            allergens: [],
-            favoriteIngredients: []
+            theme: {},
+            notifications: {}
           })
+        }
+      });
+
+      // Crear suscripción para el nuevo usuario
+      const nextMonth = new Date();
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+      await prisma.subscription.create({
+        data: {
+          userId: user.id,
+          plan: selectedPlan,
+          limitInKg: planLimits[selectedPlan],
+          usedKg: 0,
+          renewalDate: nextMonth,
+          isActive: true
         }
       });
 

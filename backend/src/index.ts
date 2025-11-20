@@ -14,20 +14,24 @@ import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
 
 // Import routes
-import catalogRoutes from './routes/catalog';
-import cartRoutes from './routes/cart';
+// import catalogRoutes from './routes/catalog'; // DESHABILITADO - Reemplazado por products
+import cartRoutes from './routes/cart_nutrifresco'; // NUTRIFRESCO version
 import authRoutes from './routes/auth';
-import orderRoutes from './routes/orders';
-import stockRoutes from './routes/stock';
-import stripeRoutes from './routes/stripe';
-import paymentRoutes from './routes/payment';
-import employeeRoutes from './routes/employee';
+import orderRoutes from './routes/orders_nutrifresco'; // NUTRIFRESCO version
+// import stockRoutes from './routes/stock'; // DESHABILITADO - Ya no necesario
+// import stripeRoutes from './routes/stripe'; // DESHABILITADO - NUTRIFRESCO no usa pagos
+// import paymentRoutes from './routes/payment'; // DESHABILITADO - NUTRIFRESCO no usa pagos
+// import employeeRoutes from './routes/employee'; // DESHABILITADO - NUTRIFRESCO no tiene empleados
 import chatRoutes from './routes/chat';
 import suggestionRoutes from './routes/suggestions';
-import adminRoutes from './routes/admin';
+// import adminRoutes from './routes/admin'; // DESHABILITADO temporalmente - necesita actualización para Product
+// NUTRIFRESCO routes
+import subscriptionRoutes from './routes/subscription';
+import producerRoutes from './routes/producer';
+import productRoutes from './routes/product';
 
 // Import controllers for direct endpoint use
-import { CartController } from './controllers/cartController';
+// import { CartController } from './controllers/cartController'; // DESHABILITADO
 
 // Initialize Prisma
 export const prisma = new PrismaClient({
@@ -66,7 +70,7 @@ app.use(cors({
 app.use(morgan(process.env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 
 // Special middleware for Stripe webhooks (needs raw body)
-app.use('/api/orders/webhook/stripe', express.raw({ type: 'application/json' }));
+// app.use('/api/orders/webhook/stripe', express.raw({ type: 'application/json' })); // DESHABILITADO - NUTRIFRESCO no usa Stripe
 
 // Standard JSON middleware for other routes
 app.use(express.json({ limit: '10mb' }));
@@ -85,19 +89,23 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/catalog', catalogRoutes);
-app.use('/api/cart', cartRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/stock', stockRoutes);
-app.use('/api/stripe', stripeRoutes);
-app.use('/api/payment', paymentRoutes);
-app.use('/api/employee', employeeRoutes);
+// app.use('/api/catalog', catalogRoutes); // DESHABILITADO - Reemplazado por /api/products
+app.use('/api/cart', cartRoutes); // NUTRIFRESCO version
+app.use('/api/orders', orderRoutes); // NUTRIFRESCO version
+// app.use('/api/stock', stockRoutes); // DESHABILITADO - Ya no necesario (validación en cart)
+// app.use('/api/stripe', stripeRoutes); // DESHABILITADO - NUTRIFRESCO no usa pagos
+// app.use('/api/payment', paymentRoutes); // DESHABILITADO - NUTRIFRESCO no usa pagos
+// app.use('/api/employee', employeeRoutes); // DESHABILITADO - NUTRIFRESCO no tiene empleados
 app.use('/api/chat', chatRoutes);
 app.use('/api/suggestions', suggestionRoutes);
-app.use('/api/admin', adminRoutes);
+// app.use('/api/admin', adminRoutes); // DESHABILITADO temporalmente - necesita actualización para Product
+// NUTRIFRESCO routes
+app.use('/api/subscription', subscriptionRoutes);
+app.use('/api/producers', producerRoutes);
+app.use('/api/products', productRoutes);
 
 // Validation endpoint (as per design spec)
-app.post('/api/validate', CartController.validateCart);
+// app.post('/api/validate', CartController.validateCart); // DESHABILITADO - Usar /api/subscription/validate
 
 // Root endpoint
 app.get('/', (req, res) => {

@@ -25,6 +25,7 @@ export interface RegisterData {
   email: string;
   phone: string;
   password: string;
+  subscriptionPlan?: 'BASIC' | 'STANDARD' | 'PREMIUM';
 }
 
 export interface LoginData {

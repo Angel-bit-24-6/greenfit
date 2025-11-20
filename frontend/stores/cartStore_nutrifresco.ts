@@ -3,8 +3,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useConfigStore } from './configStore';
 import { useAuthStore } from './authStore';
 import { useSubscriptionStore } from './subscriptionStore';
-import { Product } from './productStore';
-import { ToastManager } from '../utils/ToastManager';
 
 export interface CartItem {
   id: string;
@@ -47,13 +45,14 @@ interface CartState {
   
   // Actions
   fetchCart: () => Promise<void>;
-  addItem: (product: Product, quantity: number) => Promise<boolean>;
+  addItem: (productId: string, quantity: number) => Promise<boolean>;
   updateQuantity: (itemId: string, quantity: number) => Promise<boolean>;
   removeItem: (itemId: string) => Promise<void>;
   clearCart: () => Promise<void>;
+  validateWeight: (weightToAdd: number) => Promise<boolean>;
   getTotalItems: () => number;
   getTotalWeightInKg: () => number;
-  setCart: (cart: Cart) => void;
+  getRemainingKg: () => number;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
 }
@@ -64,8 +63,6 @@ export const useCartStore = create<CartState>((set, get) => ({
   cart: null,
   loading: false,
   error: null,
-
-  setCart: (cart) => set({ cart, error: null }),
 
   fetchCart: async () => {
     try {
@@ -102,7 +99,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     }
   },
 
-  addItem: async (product: Product, quantity: number) => {
+  addItem: async (productId: string, quantity: number) => {
     try {
       set({ loading: true, error: null });
 
@@ -113,31 +110,48 @@ export const useCartStore = create<CartState>((set, get) => ({
         throw new Error('Not authenticated or config not loaded');
       }
 
-      // Validar con subscription store
-      const { canAddProduct } = useSubscriptionStore.getState();
-      const weightToAdd = product.weightInKg * quantity;
+      // Validar peso antes de agregar
+      const { useProductStore } = await import('./productStore');
+      const { useSubscriptionStore } = await import('./subscriptionStore');
+      
+      await useProductStore.getState().fetchProductById(productId);
+      const product = useProductStore.getState().selectedProduct;
+      
+      if (!product) {
+        throw new Error('Producto no encontrado');
+      }
 
-      if (!canAddProduct(weightToAdd)) {
-        const { getRemainingKg } = useSubscriptionStore.getState();
-        const remaining = getRemainingKg();
-        ToastManager.error(
-          'Límite excedido',
-          `No puedes agregar este producto. Te quedan ${remaining.toFixed(2)} kg disponibles.`
-        );
-        set({ loading: false });
+      const weightToAdd = product.weightInKg * quantity;
+      const canAdd = useSubscriptionStore.getState().canAddProduct(weightToAdd);
+
+      if (!canAdd) {
+        const remaining = useSubscriptionStore.getState().getRemainingKg();
+        set({ 
+          error: `No puedes agregar este producto. Te quedan ${remaining.toFixed(2)} kg disponibles.`,
+          loading: false 
+        });
         return false;
       }
 
+      // Validar categoría según plan
+      const categoryAllowed = useSubscriptionStore.getState().validateCategory(product.category);
+      if (!categoryAllowed) {
+        const subscription = useSubscriptionStore.getState().subscription;
+        set({ 
+          error: `Tu plan ${subscription?.plan} no permite productos de la categoría ${product.category}.`,
+          loading: false 
+        });
+        return false;
+      }
+
+      // Agregar al carrito
       const response = await fetch(`${config.api.baseUrl}/cart/add`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          productId: product.id,
-          quantity,
-        }),
+        body: JSON.stringify({ productId, quantity }),
       });
 
       const data = await response.json();
@@ -145,15 +159,20 @@ export const useCartStore = create<CartState>((set, get) => ({
       if (data.ok && data.data) {
         await AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(data.data.cart));
         set({ cart: data.data.cart, error: null });
+        
+        // Actualizar suscripción
+        await useSubscriptionStore.getState().fetchCurrentSubscription();
+        
         return true;
       } else {
         throw new Error(data.message || 'Failed to add item to cart');
       }
     } catch (error) {
       console.error('❌ Add item error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      set({ error: errorMessage });
-      ToastManager.error('Error', errorMessage);
+      set({ 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        loading: false 
+      });
       return false;
     } finally {
       set({ loading: false });
@@ -177,26 +196,29 @@ export const useCartStore = create<CartState>((set, get) => ({
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          itemId,
-          quantity,
-        }),
+        body: JSON.stringify({ itemId, quantity }),
       });
 
       const data = await response.json();
 
-      if (data.ok && data.data) {
-        // Recargar carrito completo
+      if (data.ok) {
+        // Recargar carrito
         await get().fetchCart();
+        
+        // Actualizar suscripción
+        const { useSubscriptionStore } = await import('./subscriptionStore');
+        await useSubscriptionStore.getState().fetchCurrentSubscription();
+        
         return true;
       } else {
-        throw new Error(data.message || 'Failed to update item quantity');
+        throw new Error(data.message || 'Failed to update quantity');
       }
     } catch (error) {
       console.error('❌ Update quantity error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      set({ error: errorMessage });
-      ToastManager.error('Error', errorMessage);
+      set({ 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        loading: false 
+      });
       return false;
     } finally {
       set({ loading: false });
@@ -225,16 +247,18 @@ export const useCartStore = create<CartState>((set, get) => ({
       const data = await response.json();
 
       if (data.ok) {
-        // Recargar carrito completo
+        // Recargar carrito
         await get().fetchCart();
+        
+        // Actualizar suscripción
+        const { useSubscriptionStore } = await import('./subscriptionStore');
+        await useSubscriptionStore.getState().fetchCurrentSubscription();
       } else {
         throw new Error(data.message || 'Failed to remove item');
       }
     } catch (error) {
       console.error('❌ Remove item error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      set({ error: errorMessage });
-      ToastManager.error('Error', errorMessage);
+      set({ error: error instanceof Error ? error.message : 'Unknown error' });
     } finally {
       set({ loading: false });
     }
@@ -269,17 +293,43 @@ export const useCartStore = create<CartState>((set, get) => ({
       }
     } catch (error) {
       console.error('❌ Clear cart error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      set({ error: errorMessage });
-      ToastManager.error('Error', errorMessage);
+      set({ error: error instanceof Error ? error.message : 'Unknown error' });
     } finally {
       set({ loading: false });
     }
   },
 
+  validateWeight: async (weightToAdd: number) => {
+    try {
+      const config = useConfigStore.getState().config;
+      const token = useAuthStore.getState().token;
+
+      if (!config || !token) {
+        return false;
+      }
+
+      const response = await fetch(`${config.api.baseUrl}/subscription/validate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ weightInKg: weightToAdd }),
+      });
+
+      const data = await response.json();
+
+      return data.ok && data.data?.canAdd === true;
+    } catch (error) {
+      console.error('❌ Validate weight error:', error);
+      return false;
+    }
+  },
+
   getTotalItems: () => {
     const { cart } = get();
-    return cart?.items.reduce((total, item) => total + item.quantity, 0) || 0;
+    if (!cart || !cart.items) return 0;
+    return cart.items.reduce((total, item) => total + item.quantity, 0);
   },
 
   getTotalWeightInKg: () => {
@@ -287,6 +337,12 @@ export const useCartStore = create<CartState>((set, get) => ({
     return cart?.totalWeightInKg || 0;
   },
 
+  getRemainingKg: () => {
+    const { cart } = get();
+    return cart?.remainingKg || 0;
+  },
+
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
 }));
+

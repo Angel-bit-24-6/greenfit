@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  Alert,
   Animated,
   TouchableOpacity,
   Platform,
@@ -14,37 +13,47 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { useAuthStore } from '../../stores/authStore';
-import { useCatalogStore } from '../../stores/catalogStore';
+import { useSubscriptionStore } from '../../stores/subscriptionStore';
+import { useProductStore } from '../../stores/productStore';
+import { useProducerStore } from '../../stores/producerStore';
 import { useCartStore } from '../../stores/cartStore';
 import { useThemeStore } from '../../stores/themeStore';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import { ToastManager } from '../../utils/ToastManager';
 import { AlertManager } from '../../utils/AlertManager';
+import { ToastManager } from '../../utils/ToastManager';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = width - 40;
 
 export const HomeScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const { user, logout } = useAuthStore();
-  const { catalog, loading: catalogLoading, error: catalogError } = useCatalogStore();
-  const { getTotalItems, addItem } = useCartStore();
+  const { subscription, fetchCurrentSubscription, getRemainingKg, getUsedKg, loading: subscriptionLoading } = useSubscriptionStore();
+  const { products, fetchProducts, loading: productsLoading, error: productsError } = useProductStore();
+  const { producers, fetchProducers, loading: producersLoading, error: producersError } = useProducerStore();
+  const { getTotalItems, getTotalWeightInKg } = useCartStore();
   const { getThemeColors, currentTheme, colorMode } = useThemeStore();
   const COLORS = getThemeColors();
 
   const totalCartItems = getTotalItems();
-  
-  // Create dynamic styles based on current theme and color mode
-  const styles = useMemo(() => createStyles(COLORS), [currentTheme.id, colorMode]);
+  const totalWeightInCart = getTotalWeightInKg();
+  const remainingKg = getRemainingKg();
+  const usedKg = getUsedKg();
+  const limitInKg = subscription?.limitInKg || 0;
+  const progressPercentage = limitInKg > 0 ? (usedKg / limitInKg) * 100 : 0;
+
+  const styles = useMemo(() => createStyles(COLORS, colorMode), [currentTheme.id, colorMode]);
 
   // Animations
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const headerScale = useRef(new Animated.Value(0.95)).current;
-  const statsSlide = useRef(new Animated.Value(50)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current; // Start at 1 to show content immediately
+  const progressAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Load data on mount
+    fetchCurrentSubscription();
+    fetchProducts();
+    fetchProducers();
+
     // Entrance animations
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -52,42 +61,32 @@ export const HomeScreen: React.FC = () => {
         duration: 800,
         useNativeDriver: true,
       }),
-      Animated.spring(headerScale, {
-        toValue: 1,
-        tension: 40,
-        friction: 7,
-        useNativeDriver: true,
-      }),
-      Animated.spring(statsSlide, {
-        toValue: 0,
-        tension: 50,
-        friction: 8,
-        useNativeDriver: true,
+      Animated.timing(progressAnim, {
+        toValue: progressPercentage,
+        duration: 1000,
+        delay: 300,
+        useNativeDriver: false,
       }),
     ]).start();
-
-    // Pulse animation for cart badge
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.15,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
   }, []);
+
+  useEffect(() => {
+    // Update progress animation when subscription changes
+    Animated.timing(progressAnim, {
+      toValue: progressPercentage,
+      duration: 500,
+      useNativeDriver: false,
+    }).start();
+  }, [progressPercentage]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 2000);
+    await Promise.all([
+      fetchCurrentSubscription(),
+      fetchProducts(),
+      fetchProducers(),
+    ]);
+    setRefreshing(false);
   };
 
   const handleLogout = () => {
@@ -98,44 +97,64 @@ export const HomeScreen: React.FC = () => {
     );
   };
 
-  const navigateToMenu = () => {
-    (navigation as any).navigate('Main', { screen: 'MenuTab' });
+  const navigateToCatalog = () => {
+    (navigation as any).navigate('Main', { screen: 'CatalogTab' });
   };
 
   const navigateToCart = () => {
     (navigation as any).navigate('Main', { screen: 'CartTab' });
   };
 
-  const navigateToCustomBuilder = () => {
-    navigation.navigate('CustomPlateBuilder');
+  const navigateToProducerList = () => {
+    navigation.navigate('ProducerList' as never);
   };
 
-  const handleAddToCart = async (plate: any) => {
+  const handleAddToCart = async (product: any) => {
     try {
-      if (!plate.available) {
-        ToastManager.noStock(plate.name);
+      if (!product.available || product.stock <= 0) {
+        ToastManager.noStock(product.name);
         return;
       }
 
-      const success = await addItem({
-        type: 'plate',
-        plateId: plate.id,
-        quantity: 1,
-        price: plate.price,
-        name: plate.name,
-        image: plate.image || undefined
-      });
+      if (!subscription) {
+        AlertManager.alert('Suscripción Requerida', 'Necesitas un plan de suscripción activo para agregar productos al carrito.');
+        return;
+      }
+
+      const { canAddProduct } = useSubscriptionStore.getState();
+      if (!canAddProduct(product.weightInKg)) {
+        AlertManager.alert(
+          'Límite de Peso Excedido',
+          `No puedes agregar ${product.name} porque excedería tu límite de ${subscription.limitInKg.toFixed(2)} kg. Te quedan ${getRemainingKg().toFixed(2)} kg.`
+        );
+        return;
+      }
+
+      const { addItem } = useCartStore.getState();
+      const success = await addItem(product, 1);
 
       if (success) {
-        ToastManager.addedToCart(plate.name, plate.price);
+        ToastManager.addedToCart(product.name, product.weightInKg);
+      } else {
+        ToastManager.error('Error', 'No se pudo agregar al carrito');
       }
     } catch (error) {
-      ToastManager.error('Error', 'No se pudo agregar al carrito');
+      console.error('Error adding to cart:', error);
+      ToastManager.error('Error', 'Ocurrió un error inesperado');
     }
   };
 
+  // Ensure we have colors before rendering
+  if (!COLORS || !COLORS.background) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#ffffff', justifyContent: 'center', alignItems: 'center' }}>
+        <Text>Cargando...</Text>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: COLORS.background }]}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
@@ -155,17 +174,16 @@ export const HomeScreen: React.FC = () => {
             styles.heroSection,
             {
               opacity: fadeAnim,
-              transform: [{ scale: headerScale }],
             },
           ]}
         >
           <View style={styles.heroContent}>
             <View style={styles.heroText}>
               <Text style={styles.heroGreeting}>
-                Hola, {user?.name?.split(' ')[0]} 👋
+                Hola, {user?.name?.split(' ')[0] || 'Usuario'} 👋
               </Text>
               <Text style={styles.heroSubtitle}>
-                ¿Listo para comer saludable hoy?
+                Tu marketplace local de productos frescos
               </Text>
             </View>
             <TouchableOpacity
@@ -178,81 +196,79 @@ export const HomeScreen: React.FC = () => {
           </View>
         </Animated.View>
 
-        {/* Stats Cards - Horizontal Scroll Style */}
-        <Animated.View
-          style={[
-            styles.statsWrapper,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: statsSlide }],
-            },
-          ]}
-        >
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.statsContainer}
-          >
-            <View style={[styles.statCard, styles.statCardPrimary]}>
-              <View style={styles.statIconContainer}>
-                <Text style={styles.statIcon}>🥬</Text>
-              </View>
-              <Text style={styles.statNumber}>{catalog?.ingredients?.length || 0}</Text>
-              <Text style={styles.statLabel}>Ingredientes</Text>
-            </View>
-
-            <View style={[styles.statCard, styles.statCardSecondary]}>
-              <View style={styles.statIconContainer}>
-                <Text style={styles.statIcon}>🍽️</Text>
-              </View>
-              <Text style={styles.statNumber}>{catalog?.plates?.length || 0}</Text>
-              <Text style={styles.statLabel}>Platillos</Text>
-            </View>
-
-            <Animated.View
-              style={[
-                styles.statCard,
-                styles.statCardHighlight,
-                {
-                  transform: [{ scale: pulseAnim }],
-                },
-              ]}
-            >
-              <View style={[styles.statIconContainer, styles.statIconHighlight]}>
-                <Text style={styles.statIcon}>🛒</Text>
-              </View>
-              <Text style={[styles.statNumber, styles.statNumberHighlight]}>
-                {totalCartItems}
-              </Text>
-              <Text style={styles.statLabel}>En carrito</Text>
-            </Animated.View>
-          </ScrollView>
-        </Animated.View>
-
-        {/* Quick Actions - Modern Card Design */}
+        {/* Subscription Summary */}
         <Animated.View
           style={[
             styles.section,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: statsSlide }],
-            },
+            { opacity: fadeAnim },
+          ]}
+        >
+          <Text style={styles.sectionTitle}>Tu Suscripción</Text>
+          {subscriptionLoading ? (
+            <Text style={styles.loadingText}>Cargando suscripción...</Text>
+          ) : subscription ? (
+            <TouchableOpacity
+              style={styles.subscriptionCard}
+              onPress={() => navigation.navigate('SubscriptionSettings' as never)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.subscriptionHeader}>
+                <Text style={styles.subscriptionPlan}>
+                  Plan {subscription.plan}
+                </Text>
+                <Text style={styles.subscriptionRenewal}>
+                  Renovación: {new Date(subscription.renewalDate).toLocaleDateString()}
+                </Text>
+              </View>
+              <View style={styles.progressBarContainer}>
+                <Animated.View
+                  style={[
+                    styles.progressBarFill,
+                    { width: progressAnim.interpolate({
+                      inputRange: [0, 100],
+                      outputRange: ['0%', '100%'],
+                    }) },
+                  ]}
+                />
+              </View>
+              <Text style={styles.subscriptionUsage}>
+                {usedKg.toFixed(2)} kg usados de {limitInKg.toFixed(2)} kg
+              </Text>
+              <Text style={styles.subscriptionRemaining}>
+                {remainingKg.toFixed(2)} kg restantes este mes
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>⚠️</Text>
+              <Text style={styles.emptyText}>No tienes una suscripción activa.</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('SubscriptionSettings' as never)}>
+                <Text style={styles.actionLink}>Elige un plan</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </Animated.View>
+
+        {/* Quick Actions */}
+        <Animated.View
+          style={[
+            styles.section,
+            { opacity: fadeAnim },
           ]}
         >
           <Text style={styles.sectionTitle}>Explorar</Text>
-          
           <View style={styles.actionsGrid}>
             <TouchableOpacity
-              onPress={navigateToMenu}
+              onPress={navigateToCatalog}
               style={styles.actionCard}
               activeOpacity={0.8}
             >
               <View style={styles.actionCardContent}>
                 <View style={[styles.actionIconCircle, styles.actionIconPrimary]}>
-                  <Text style={styles.actionIcon}>🍽️</Text>
+                  <Text style={styles.actionIcon}>📦</Text>
                 </View>
-                <Text style={styles.actionTitle}>Menú</Text>
-                <Text style={styles.actionSubtitle}>Ver platillos</Text>
+                <Text style={styles.actionTitle}>Catálogo</Text>
+                <Text style={styles.actionSubtitle}>Ver productos</Text>
               </View>
             </TouchableOpacity>
 
@@ -291,18 +307,18 @@ export const HomeScreen: React.FC = () => {
           </View>
 
           <TouchableOpacity
-            onPress={navigateToCustomBuilder}
+            onPress={navigateToProducerList}
             style={styles.customBuilderCard}
             activeOpacity={0.8}
           >
             <View style={styles.customBuilderContent}>
               <View style={styles.customBuilderIcon}>
-                <Text style={styles.customBuilderEmoji}>🎨</Text>
+                <Text style={styles.customBuilderEmoji}>🧑‍🌾</Text>
               </View>
               <View style={styles.customBuilderText}>
-                <Text style={styles.customBuilderTitle}>Creador Personalizado</Text>
+                <Text style={styles.customBuilderTitle}>Productores</Text>
                 <Text style={styles.customBuilderSubtitle}>
-                  Diseña tu platillo ideal
+                  Descubre a nuestros agricultores locales
                 </Text>
               </View>
               <Text style={styles.actionArrow}>→</Text>
@@ -310,95 +326,96 @@ export const HomeScreen: React.FC = () => {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Featured Plates - Large Cards */}
+        {/* Featured Products */}
         <Animated.View
           style={[
             styles.section,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: statsSlide }],
-            },
+            { opacity: fadeAnim },
           ]}
         >
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Destacados</Text>
-            <TouchableOpacity onPress={navigateToMenu}>
+            <Text style={styles.sectionTitle}>Productos Destacados</Text>
+            <TouchableOpacity onPress={navigateToCatalog}>
               <Text style={styles.seeAllText}>Ver todo →</Text>
             </TouchableOpacity>
           </View>
           
-          {catalog?.plates?.slice(0, 2).map((plate, index) => (
-            <Animated.View
-              key={plate.id}
-              style={[
-                styles.featuredCard,
-                {
-                  opacity: fadeAnim,
-                  transform: [
-                    {
-                      translateY: statsSlide.interpolate({
-                        inputRange: [0, 50],
-                        outputRange: [0, 20 + index * 15],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
-              <View style={styles.featuredCardContent}>
-                <View style={styles.featuredHeader}>
-                  <View style={styles.featuredTitleContainer}>
-                    <Text style={styles.featuredTitle}>{plate.name}</Text>
-                    <Text style={styles.featuredPrice}>
-                      ${plate.price?.toFixed(2) || '0.00'}
-                    </Text>
-                  </View>
-                </View>
-                
-                <Text style={styles.featuredDescription} numberOfLines={2}>
-                  {plate.description}
-                </Text>
-
-                <View style={styles.featuredFooter}>
-                  <View style={styles.featuredTags}>
-                    {plate.tags?.slice(0, 2).map((tag: string, idx: number) => (
-                      <View key={idx} style={styles.tag}>
-                        <Text style={styles.tagText}>{tag}</Text>
-                      </View>
-                    ))}
+          {productsLoading ? (
+            <Text style={styles.loadingText}>Cargando productos...</Text>
+          ) : products.length > 0 ? (
+            products.slice(0, 2).map((product, index) => (
+              <Animated.View
+                key={product.id}
+                style={[
+                  styles.featuredCard,
+                  {
+                    opacity: fadeAnim,
+                    transform: [
+                      {
+                        translateY: fadeAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [20 + index * 15, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <View style={styles.featuredCardContent}>
+                  <View style={styles.featuredHeader}>
+                    <View style={styles.featuredTitleContainer}>
+                      <Text style={styles.featuredTitle}>{product.name}</Text>
+                      <Text style={styles.featuredWeight}>
+                        {product.weightInKg.toFixed(2)} kg
+                      </Text>
+                    </View>
                   </View>
                   
-                  <TouchableOpacity
-                    onPress={() => handleAddToCart(plate)}
-                    disabled={!plate.available}
-                    style={[
-                      styles.addButton,
-                      !plate.available && styles.addButtonDisabled,
-                    ]}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.addButtonText,
-                        !plate.available && styles.addButtonTextDisabled,
-                      ]}
-                    >
-                      {plate.available ? '+' : 'Agotado'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </Animated.View>
-          ))}
+                  <Text style={styles.featuredDescription} numberOfLines={2}>
+                    {product.description}
+                  </Text>
 
-          {(!catalog?.plates || catalog.plates.length === 0) && (
+                  <View style={styles.featuredFooter}>
+                    <View style={styles.featuredTags}>
+                      {Array.isArray(product.tags) && product.tags.length > 0
+                        ? product.tags.slice(0, 2).map((tag: string, idx: number) => (
+                            <View key={idx} style={styles.tag}>
+                              <Text style={styles.tagText}>{typeof tag === 'string' ? tag : String(tag)}</Text>
+                            </View>
+                          ))
+                        : null}
+                    </View>
+                    
+                    <TouchableOpacity
+                      onPress={() => handleAddToCart(product)}
+                      disabled={!product.available || product.stock <= 0}
+                      style={[
+                        styles.addButton,
+                        (!product.available || product.stock <= 0) && styles.addButtonDisabled,
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.addButtonText,
+                          (!product.available || product.stock <= 0) && styles.addButtonTextDisabled,
+                        ]}
+                      >
+                        {product.available && product.stock > 0 ? '+' : 'Agotado'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Animated.View>
+            ))
+          ) : (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyEmoji}>🍽️</Text>
+              <Text style={styles.emptyEmoji}>📦</Text>
               <Text style={styles.emptyText}>
-                {catalogLoading ? 'Cargando platillos...' : 'No hay platillos disponibles'}
+                {productsLoading ? 'Cargando productos...' : 'No hay productos disponibles'}
               </Text>
-              {catalogError && (
-                <Text style={styles.errorText}>Error: {catalogError}</Text>
+              {productsError && (
+                <Text style={styles.errorText}>Error: {productsError}</Text>
               )}
             </View>
           )}
@@ -407,10 +424,10 @@ export const HomeScreen: React.FC = () => {
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            🌱 GreenFit
+            🌱 NUTRIFRESCO
           </Text>
           <Text style={styles.footerSubtext}>
-            Comida saludable para tu bienestar
+            Tu conexión con lo local y fresco
           </Text>
         </View>
       </ScrollView>
@@ -418,7 +435,7 @@ export const HomeScreen: React.FC = () => {
   );
 };
 
-const createStyles = (COLORS: any) => StyleSheet.create({
+const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -429,7 +446,6 @@ const createStyles = (COLORS: any) => StyleSheet.create({
   content: {
     paddingBottom: 40,
   },
-  // Hero Section
   heroSection: {
     backgroundColor: COLORS.backgroundSecondary,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
@@ -473,74 +489,6 @@ const createStyles = (COLORS: any) => StyleSheet.create({
   logoutIcon: {
     fontSize: 20,
   },
-  // Stats Section
-  statsWrapper: {
-    marginTop: 24,
-    marginBottom: 8,
-  },
-  statsContainer: {
-    paddingHorizontal: 20,
-    gap: 16,
-  },
-  statCard: {
-    width: 140,
-    backgroundColor: COLORS.surface,
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  statCardPrimary: {
-    backgroundColor: COLORS.surfaceCard,
-    borderColor: COLORS.primary,
-    borderWidth: 1.5,
-  },
-  statCardSecondary: {
-    backgroundColor: COLORS.surfaceElevated,
-  },
-  statCardHighlight: {
-    backgroundColor: COLORS.surfaceCard,
-    borderColor: COLORS.primary,
-    borderWidth: 2,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  statIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.surfaceElevated,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  statIconHighlight: {
-    backgroundColor: COLORS.primary,
-  },
-  statIcon: {
-    fontSize: 28,
-  },
-  statNumber: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: COLORS.primary,
-    marginBottom: 4,
-    letterSpacing: -1,
-  },
-  statNumberHighlight: {
-    fontSize: 40,
-  },
-  statLabel: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  // Section
   section: {
     marginTop: 32,
     paddingHorizontal: 20,
@@ -563,7 +511,55 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '600',
   },
-  // Actions
+  subscriptionCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    marginBottom: 20,
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  subscriptionPlan: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  subscriptionRenewal: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  progressBarContainer: {
+    height: 10,
+    backgroundColor: COLORS.border,
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: COLORS.primary,
+    borderRadius: 5,
+  },
+  subscriptionUsage: {
+    fontSize: 16,
+    color: COLORS.text,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  subscriptionRemaining: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  actionLink: {
+    color: COLORS.primary,
+    fontWeight: '600',
+    marginTop: 8,
+  },
   actionsGrid: {
     flexDirection: 'row',
     gap: 16,
@@ -683,7 +679,6 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     color: COLORS.textSecondary,
     fontWeight: '500',
   },
-  // Featured Cards
   featuredCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 28,
@@ -711,7 +706,7 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     marginRight: 12,
     letterSpacing: -0.5,
   },
-  featuredPrice: {
+  featuredWeight: {
     fontSize: 24,
     fontWeight: '800',
     color: COLORS.primary,
@@ -769,7 +764,6 @@ const createStyles = (COLORS: any) => StyleSheet.create({
   addButtonTextDisabled: {
     color: COLORS.textSecondary,
   },
-  // Empty State
   emptyState: {
     backgroundColor: COLORS.surface,
     borderRadius: 24,
@@ -795,7 +789,12 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     textAlign: 'center',
     fontWeight: '600',
   },
-  // Footer
+  loadingText: {
+    fontSize: 16,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 20,
+  },
   footer: {
     alignItems: 'center',
     paddingTop: 32,

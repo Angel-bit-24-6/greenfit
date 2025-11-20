@@ -1,13 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useCartStore } from '../../stores/cartStore';
+import { useSubscriptionStore } from '../../stores/subscriptionStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { Button } from '../../components/ui/Button';
@@ -16,8 +18,8 @@ import { AlertManager } from '../../utils/AlertManager';
 
 interface CartItemProps {
   item: any;
-  onUpdateQuantity: (itemId: string, quantity: number) => void;
-  onRemove: (itemId: string) => void;
+  onUpdateQuantity: (itemId: string, quantity: number) => Promise<boolean>;
+  onRemove: (itemId: string) => Promise<void>;
 }
 
 const CartItemComponent: React.FC<CartItemProps> = ({ 
@@ -29,16 +31,16 @@ const CartItemComponent: React.FC<CartItemProps> = ({
   const COLORS = getThemeColors();
   const itemStyles = useMemo(() => createItemStyles(COLORS), [currentTheme.id, colorMode]);
   
-  const updateQuantity = (change: number) => {
+  const updateQuantity = async (change: number) => {
     const newQuantity = item.quantity + change;
     if (newQuantity <= 0) {
       AlertManager.confirmDestructive(
         'Eliminar item',
         '¿Deseas eliminar este item del carrito?',
-        () => onRemove(item.id)
+        async () => await onRemove(item.id)
       );
     } else {
-      onUpdateQuantity(item.id, newQuantity);
+      await onUpdateQuantity(item.id, newQuantity);
     }
   };
 
@@ -46,10 +48,14 @@ const CartItemComponent: React.FC<CartItemProps> = ({
     <View style={[itemStyles.cartItem, { backgroundColor: COLORS.surface, borderColor: COLORS.border }]}>
       <View style={itemStyles.itemInfo}>
         <Text style={[itemStyles.itemName, { color: COLORS.text }]}>{item.name}</Text>
-        <Text style={[itemStyles.itemType, { color: COLORS.textSecondary }]}>
-          {item.type === 'plate' ? '🍽️ Platillo' : '🎨 Personalizado'}
+        {item.product?.producer && (
+          <Text style={[itemStyles.producerName, { color: COLORS.textSecondary }]}>
+            🧑‍🌾 {item.product.producer.businessName}
+          </Text>
+        )}
+        <Text style={[itemStyles.itemWeight, { color: COLORS.primary }]}>
+          {item.weightInKg.toFixed(2)} kg
         </Text>
-        <Text style={[itemStyles.itemPrice, { color: COLORS.primary }]}>${(item.price * item.quantity).toFixed(2)}</Text>
       </View>
       
       <View style={itemStyles.quantityControls}>
@@ -71,11 +77,11 @@ const CartItemComponent: React.FC<CartItemProps> = ({
       </View>
       
       <TouchableOpacity 
-  style={itemStyles.removeButton}
-  onPress={() => onRemove(item.id)}
->
-  <Text style={itemStyles.removeButtonText}>🗑️</Text>
-</TouchableOpacity>
+        style={itemStyles.removeButton}
+        onPress={async () => await onRemove(item.id)}
+      >
+        <Text style={itemStyles.removeButtonText}>🗑️</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -84,72 +90,107 @@ export const CartScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const navigation = useNavigation();
-  const { cart, removeItem, clearCart, getTotalItems, getTotalPrice, setCart } = useCartStore();
+  const { cart, removeItem, clearCart, getTotalItems, getTotalWeightInKg, updateQuantity, fetchCart } = useCartStore();
+  const { subscription, getRemainingKg, getUsedKg } = useSubscriptionStore();
   const { user } = useAuthStore();
   const { getThemeColors, currentTheme, colorMode } = useThemeStore();
   const COLORS = getThemeColors();
   
-  // Create dynamic styles based on current theme and color mode
-  const styles = useMemo(() => createStyles(COLORS), [currentTheme.id, colorMode]);
+  const styles = useMemo(() => createStyles(COLORS, colorMode), [currentTheme.id, colorMode]);
 
-  const handleUpdateQuantity = (itemId: string, newQuantity: number) => {
-    // Find item and update it
-    if (cart) {
-      const updatedItems = cart.items.map(item =>
-        item.id === itemId ? { ...item, quantity: newQuantity } : item
-      );
-      
-      const updatedCart = {
-        ...cart,
-        items: updatedItems,
-        totalPrice: updatedItems.reduce((total, item) => total + (item.price * item.quantity), 0),
-        updatedAt: new Date().toISOString()
-      };
-      
-      useCartStore.getState().setCart(updatedCart);
+  useEffect(() => {
+    fetchCart();
+  }, []);
+
+  const handleUpdateQuantity = async (itemId: string, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      await removeItem(itemId);
+      return false;
+    }
+    
+    setLoading(true);
+    try {
+      const success = await updateQuantity(itemId, newQuantity);
+      if (success) {
+        await fetchCart(); // Reload cart to get updated weights
+      }
+      return success;
+    } catch (error) {
+      console.error('Error updating quantity:', error);
+      ToastManager.error('Error', 'No se pudo actualizar la cantidad');
+      return false;
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleRemoveItem = (itemId: string) => {
+  const handleRemoveItem = async (itemId: string) => {
     const item = cart?.items.find(i => i.id === itemId);
-    removeItem(itemId);
-    if (item) {
-      ToastManager.itemRemoved(item.name);
+    setLoading(true);
+    try {
+      await removeItem(itemId);
+      await fetchCart(); // Reload cart
+      if (item) {
+        ToastManager.itemRemoved(item.name);
+      }
+    } catch (error) {
+      console.error('Error removing item:', error);
+      ToastManager.error('Error', 'No se pudo eliminar el item');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleClearCart = () => {
-    console.log('🧪 handleClearCart clicked!');
     setShowClearConfirm(true);
   };
 
-  const confirmClearCart = () => {
-    console.log('🧹 Clearing cart...');
+  const confirmClearCart = async () => {
+    setLoading(true);
     try {
-      clearCart();
-      console.log('✅ Cart cleared successfully');
+      await clearCart();
       ToastManager.cartCleared();
       setShowClearConfirm(false);
     } catch (error) {
-      console.error('❌ Error clearing cart:', error);
+      console.error('Error clearing cart:', error);
       ToastManager.error('Error', 'No se pudo vaciar el carrito');
       setShowClearConfirm(false);
+    } finally {
+      setLoading(false);
     }
   };
 
   const cancelClearCart = () => {
-    console.log('🚫 Clear cart cancelled');
     setShowClearConfirm(false);
   };
 
   const handleCheckout = () => {
     if (!cart || cart.items.length === 0) {
-      ToastManager.warning('🛒 Carrito vacío', 'Agrega algunos items antes de continuar');
+      ToastManager.warning('🛒 Carrito vacío', 'Agrega algunos productos antes de continuar');
       return;
     }
 
     if (!user) {
-      ToastManager.error('Por favor inicia sesión para realizar el pedido');
+      ToastManager.error('Error', 'Por favor inicia sesión para realizar el pedido');
+      return;
+    }
+
+    if (!subscription || !subscription.isActive) {
+      AlertManager.alert(
+        'Suscripción Requerida',
+        'Necesitas un plan de suscripción activo para realizar pedidos.'
+      );
+      return;
+    }
+
+    const totalWeight = getTotalWeightInKg();
+    const remainingKg = getRemainingKg();
+
+    if (totalWeight > remainingKg) {
+      AlertManager.alert(
+        'Límite Excedido',
+        `El peso total de tu carrito (${totalWeight.toFixed(2)} kg) excede tu límite disponible (${remainingKg.toFixed(2)} kg). Por favor, elimina algunos items.`
+      );
       return;
     }
 
@@ -158,7 +199,21 @@ export const CartScreen: React.FC = () => {
   };
 
   const totalItems = getTotalItems();
-  const totalPrice = getTotalPrice();
+  const totalWeightInKg = getTotalWeightInKg();
+  const remainingKg = getRemainingKg();
+  const usedKg = getUsedKg();
+  const limitInKg = subscription?.limitInKg || 0;
+  const progressPercentage = limitInKg > 0 ? (usedKg / limitInKg) * 100 : 0;
+  const canCheckout = totalWeightInKg <= remainingKg && subscription?.isActive;
+
+  if (loading && (!cart || cart.items.length === 0)) {
+    return (
+      <View style={[styles.emptyContainer, { backgroundColor: COLORS.background }]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={[styles.loadingText, { color: COLORS.textSecondary }]}>Cargando carrito...</Text>
+      </View>
+    );
+  }
 
   if (!cart || cart.items.length === 0) {
     return (
@@ -166,14 +221,13 @@ export const CartScreen: React.FC = () => {
         <Text style={styles.emptyIcon}>🛒</Text>
         <Text style={[styles.emptyTitle, { color: COLORS.text }]}>Tu carrito está vacío</Text>
         <Text style={[styles.emptySubtitle, { color: COLORS.textSecondary }]}>
-          Explora nuestro menú y agrega algunos platillos deliciosos
+          Explora nuestro catálogo y agrega algunos productos frescos
         </Text>
         <Button
-          title="Ver Menú"
+          title="Ver Catálogo"
           onPress={() => {
-            // Navigate to Menu tab
             navigation.dispatch(CommonActions.navigate({
-              name: 'MenuTab'
+              name: 'CatalogTab'
             }));
           }}
           style={styles.exploreButton}
@@ -188,9 +242,42 @@ export const CartScreen: React.FC = () => {
       <View style={[styles.header, { backgroundColor: COLORS.surface, borderBottomColor: COLORS.border }]}>
         <Text style={[styles.title, { color: COLORS.text }]}>🛒 Mi Carrito</Text>
         <Text style={[styles.subtitle, { color: COLORS.textSecondary }]}>
-          {totalItems} item{totalItems !== 1 ? 's' : ''} • {user?.name}
+          {totalItems} item{totalItems !== 1 ? 's' : ''} • {totalWeightInKg.toFixed(2)} kg
         </Text>
       </View>
+
+      {/* Subscription Progress */}
+      {subscription && (
+        <View style={[styles.progressSection, { backgroundColor: COLORS.surface, borderBottomColor: COLORS.border }]}>
+          <View style={styles.progressHeader}>
+            <Text style={[styles.progressLabel, { color: COLORS.text }]}>
+              Plan {subscription.plan} • {limitInKg.toFixed(2)} kg/mes
+            </Text>
+            <Text style={[styles.progressRemaining, { color: COLORS.primary }]}>
+              {remainingKg.toFixed(2)} kg restantes
+            </Text>
+          </View>
+          <View style={[styles.progressBarContainer, { backgroundColor: COLORS.border }]}>
+            <View
+              style={[
+                styles.progressBarFill,
+                {
+                  width: `${Math.min(progressPercentage, 100)}%`,
+                  backgroundColor: progressPercentage > 80 ? COLORS.error : COLORS.primary,
+                },
+              ]}
+            />
+          </View>
+          <View style={styles.progressTextContainer}>
+            <Text style={[styles.progressText, { color: COLORS.textSecondary }]}>
+              {usedKg.toFixed(2)} kg usados
+            </Text>
+            <Text style={[styles.progressText, { color: COLORS.textSecondary }]}>
+              {remainingKg.toFixed(2)} kg disponibles
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* Items List */}
       <FlatList
@@ -206,24 +293,33 @@ export const CartScreen: React.FC = () => {
         style={styles.itemsList}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
+        refreshing={loading}
+        onRefresh={fetchCart}
       />
 
       {/* Summary */}
       <View style={[styles.summary, { backgroundColor: COLORS.surface, borderTopColor: COLORS.border }]}>
         <View style={styles.summaryRow}>
-          <Text style={[styles.summaryLabel, { color: COLORS.textSecondary }]}>Subtotal ({totalItems} items):</Text>
-          <Text style={[styles.summaryValue, { color: COLORS.text }]}>${totalPrice.toFixed(2)}</Text>
+          <Text style={[styles.summaryLabel, { color: COLORS.textSecondary }]}>Peso total ({totalItems} items):</Text>
+          <Text style={[styles.summaryValue, { color: COLORS.text }]}>
+            {totalWeightInKg.toFixed(2)} kg
+          </Text>
         </View>
         
         <View style={styles.summaryRow}>
-          <Text style={[styles.summaryLabel, { color: COLORS.textSecondary }]}>Entrega:</Text>
-          <Text style={[styles.summaryValue, { color: COLORS.text }]}>Gratis</Text>
+          <Text style={[styles.summaryLabel, { color: COLORS.textSecondary }]}>Límite disponible:</Text>
+          <Text style={[styles.summaryValue, { color: remainingKg > 0 ? COLORS.primary : COLORS.error }]}>
+            {remainingKg.toFixed(2)} kg
+          </Text>
         </View>
         
-        <View style={[styles.summaryRow, styles.totalRow, { borderTopColor: COLORS.border }]}>
-          <Text style={[styles.totalLabel, { color: COLORS.text }]}>Total:</Text>
-          <Text style={[styles.totalValue, { color: COLORS.primary }]}>${totalPrice.toFixed(2)}</Text>
-        </View>
+        {!canCheckout && (
+          <View style={[styles.warningRow, { backgroundColor: COLORS.error + '20', borderColor: COLORS.error }]}>
+            <Text style={[styles.warningText, { color: COLORS.error }]}>
+              ⚠️ El peso total excede tu límite disponible
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Actions */}
@@ -253,19 +349,18 @@ export const CartScreen: React.FC = () => {
         )}
         
         <Button
-          title="🚀 Ir a Checkout"
+          title={canCheckout ? "🚀 Ir a Checkout" : "⚠️ Límite Excedido"}
           onPress={handleCheckout}
-          style={styles.checkoutButton}
+          style={[styles.checkoutButton, !canCheckout && styles.checkoutButtonDisabled]}
           size="large"
+          disabled={!canCheckout}
         />
       </View>
     </View>
   );
 };
 
-// ... (el resto del código anterior se mantiene igual)
-
-const createStyles = (COLORS: any) => StyleSheet.create({
+const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -276,6 +371,11 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     alignItems: 'center',
     padding: 32,
     backgroundColor: COLORS.background,
+  },
+  loadingText: {
+    fontSize: 16,
+    marginTop: 16,
+    color: COLORS.textSecondary,
   },
   emptyIcon: {
     fontSize: 64,
@@ -301,12 +401,11 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     minWidth: 200,
   },
   header: {
-    backgroundColor: COLORS.background, // Fondo de pantalla
+    backgroundColor: COLORS.background,
     padding: 20,
     paddingTop: 16,
-    borderBottomWidth: 1, // Línea sutil en la parte inferior
+    borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-    // Eliminamos todas las sombras
   },
   title: {
     fontSize: 28,
@@ -320,20 +419,54 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     marginTop: 6,
     fontWeight: '400',
   },
+  progressSection: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  progressLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  progressRemaining: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  progressBarContainer: {
+    height: 10,
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 5,
+  },
+  progressTextContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  progressText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
   itemsList: {
     flex: 1,
   },
   listContent: {
     padding: 16,
   },
-  
-  // --- RESUMEN MODIFICADO ---
   summary: {
-    backgroundColor: COLORS.background, // Fondo de pantalla
+    backgroundColor: COLORS.background,
     padding: 24,
-    borderTopWidth: 1, // Línea sutil en la parte superior
+    borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    // Eliminamos sombras
   },
   summaryRow: {
     flexDirection: 'row',
@@ -350,41 +483,36 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     color: COLORS.text,
     fontWeight: '600',
   },
-  totalRow: {
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    paddingTop: 16,
+  warningRow: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
     marginTop: 8,
-    marginBottom: 0,
   },
-  totalLabel: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.text,
-    letterSpacing: -0.3,
+  warningText: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
-  totalValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.primary, // Color primario para el total
-    letterSpacing: -0.3,
-  },
-  
-  // --- ACCIONES MODIFICADAS ---
   actions: {
-    backgroundColor: COLORS.background, // Fondo de pantalla
+    backgroundColor: COLORS.background,
     padding: 20,
     paddingTop: 16,
-    // Eliminamos sombras
+    flexDirection: 'row',
+    gap: 12,
   },
   clearButton: {
     flex: 0.3,
     borderWidth: 1,
-    borderColor: COLORS.textSecondary, // Borde sutil
+    borderColor: COLORS.textSecondary,
   },
   checkoutButton: {
     flex: 0.65,
-    backgroundColor: COLORS.primary, // Botón sólido con color primario
+    backgroundColor: COLORS.primary,
+  },
+  checkoutButtonDisabled: {
+    backgroundColor: COLORS.surfaceElevated,
+    opacity: 0.5,
   },
   confirmContainer: {
     flex: 0.3,
@@ -397,7 +525,7 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     backgroundColor: COLORS.background,
     borderWidth: 1,
     borderColor: COLORS.textSecondary,
-    borderRadius: 16, // Un poco de redondeo para los botones de acción
+    borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 16,
     justifyContent: 'center',
@@ -405,7 +533,7 @@ const createStyles = (COLORS: any) => StyleSheet.create({
     flex: 0.45,
   },
   clearConfirmButton: {
-    backgroundColor: COLORS.error, // Rojo para acción destructiva
+    backgroundColor: COLORS.error,
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 16,
@@ -426,15 +554,13 @@ const createStyles = (COLORS: any) => StyleSheet.create({
 });
 
 const createItemStyles = (COLORS: any) => StyleSheet.create({
-  // --- TARJETA DE ITEM MODIFICADA ---
   cartItem: {
-    backgroundColor: COLORS.background, // Fondo de pantalla
-    padding: 16, // Menos padding
-    // Eliminamos borderRadius y sombras
+    backgroundColor: COLORS.background,
+    padding: 16,
     marginBottom: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomWidth: 1, // Línea sutil para separar items
+    borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   itemInfo: {
@@ -444,19 +570,19 @@ const createItemStyles = (COLORS: any) => StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: COLORS.text,
-    marginBottom: 4, // Menos espacio
+    marginBottom: 4,
     letterSpacing: -0.3,
   },
-  itemType: {
+  producerName: {
     fontSize: 13,
     color: COLORS.textSecondary,
     marginBottom: 8,
     fontWeight: '500',
   },
-  itemPrice: {
+  itemWeight: {
     fontSize: 17,
     fontWeight: '700',
-    color: COLORS.primary, // Color primario
+    color: COLORS.primary,
     letterSpacing: -0.3,
   },
   quantityControls: {
@@ -467,17 +593,16 @@ const createItemStyles = (COLORS: any) => StyleSheet.create({
   quantityButton: {
     width: 34,
     height: 34,
-    // Borde sutil en lugar de fondo
     borderWidth: 1,
     borderColor: COLORS.primary,
-    borderRadius: 17, // Redondeo total para un look moderno
+    borderRadius: 17,
     justifyContent: 'center',
     alignItems: 'center',
   },
   quantityButtonText: {
     fontSize: 18,
     fontWeight: '700',
-    color: COLORS.primary, // Color primario
+    color: COLORS.primary,
   },
   quantity: {
     fontSize: 17,

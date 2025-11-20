@@ -30,8 +30,6 @@ model User {
   carts        Cart[]
   orders       Order[]
   producer     Producer?
-  suggestions  Suggestion[]
-  chatLogs     ChatLog[]
 
   @@map("users")
 }
@@ -227,3 +225,4 @@ model ChatLog {
 
   @@map("chat_logs")
 }
+

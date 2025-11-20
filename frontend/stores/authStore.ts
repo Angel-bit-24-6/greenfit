@@ -45,6 +45,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error) {
       console.error('❌ Error loading theme preferences after login:', error);
     }
+
+    // Load subscription after login
+    try {
+      const { fetchCurrentSubscription } = require('./subscriptionStore').useSubscriptionStore.getState();
+      await fetchCurrentSubscription();
+    } catch (error) {
+      console.error('❌ Error loading subscription after login:', error);
+    }
   },
 
   logout: async () => {
@@ -124,6 +132,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // Load theme preferences from backend after profile refresh
         const { loadPreferencesFromBackend } = require('./themeStore').useThemeStore.getState();
         await loadPreferencesFromBackend();
+
+        // También recargar suscripción al refrescar perfil
+        try {
+          const { fetchCurrentSubscription } = require('./subscriptionStore').useSubscriptionStore.getState();
+          await fetchCurrentSubscription();
+        } catch (error) {
+          console.error('❌ Error loading subscription after refresh:', error);
+        }
       } else {
         // Profile fetch failed, might be token expired
         console.log('❌ Profile refresh failed, logging out');
