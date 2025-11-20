@@ -15,7 +15,7 @@ import { ToastManager } from '../../utils/ToastManager';
 export const MenuScreen: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState<'plates' | 'ingredients'>('plates');
   const { catalog, loading, error } = useCatalogStore();
-  const { addItem } = useCartStore();
+  const { addItem, error: cartError } = useCartStore();
 
   const handleAddToCart = async (item: any) => {
     try {
@@ -26,22 +26,48 @@ export const MenuScreen: React.FC = () => {
           return;
         }
 
+        // Validate price
+        const itemPrice = typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0;
+        if (!itemPrice || itemPrice <= 0) {
+          ToastManager.error('Error', 'El precio del item no es válido');
+          return;
+        }
+
         // Add to cart with validation
+        console.log('🛒 Adding item to cart:', {
+          type: 'plate',
+          plateId: item.id,
+          quantity: 1,
+          price: itemPrice,
+          name: item.name,
+        });
+        
         const success = await addItem({
           type: 'plate',
           plateId: item.id,
           quantity: 1,
-          price: item.price,
+          price: itemPrice,
           name: item.name,
           image: item.image || undefined
         });
+        
+        console.log('🛒 Add item result:', success);
 
         if (success) {
           // Show success toast
           ToastManager.addedToCart(item.name, item.price);
         } else {
-          // addItem failed - error is already set in store
-          ToastManager.error('Item could not be added to cart');
+          // addItem failed - get error from store for more specific message
+          const errorMessage = cartError || 'No se pudo agregar al carrito';
+          
+          // Check for specific error types
+          if (errorMessage.includes('Configuration not loaded')) {
+            ToastManager.error('Error de configuración', 'La aplicación no está configurada correctamente');
+          } else if (errorMessage.includes('Failed to validate stock') || errorMessage.includes('network')) {
+            ToastManager.networkError();
+          } else {
+            ToastManager.error('Error al agregar', errorMessage);
+          }
         }
       } else {
         // For ingredients - show info about custom plates

@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -18,13 +19,17 @@ async function main() {
 
   console.log('🗑️  Cleared existing data');
 
+  // Hash passwords
+  const saltRounds = 10;
+  const testPasswordHash = await bcrypt.hash('test123', saltRounds);
+
   // Create test users
   const testUser = await prisma.user.create({
     data: {
       email: 'test@greenfit.mx',
       name: 'Usuario de Prueba',
       phone: '+52 961 123 4567',
-      password: 'test123',
+      password: testPasswordHash,
       preferences: JSON.stringify({
         dietaryRestrictions: ['vegan', 'gluten_free'],
         allergens: ['nuts'],
@@ -58,12 +63,13 @@ async function main() {
   ];
 
   for (const employeeData of employees) {
+    const hashedPassword = await bcrypt.hash(employeeData.password, saltRounds);
     await prisma.user.create({
       data: {
         email: employeeData.email,
         name: employeeData.name,
         role: employeeData.role,
-        password: employeeData.password,
+        password: hashedPassword,
         preferences: JSON.stringify({
           dietaryRestrictions: [],
           allergens: [],

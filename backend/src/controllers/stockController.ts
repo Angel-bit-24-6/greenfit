@@ -43,6 +43,7 @@ export class StockController {
 
         if (item.type === 'plate' && item.plateId) {
           // Validate plate availability and ingredient stock
+          console.log(`🔍 Validating plate: ${item.plateId} (${item.name})`);
           const plate = await prisma.plate.findUnique({
             where: { id: item.plateId },
             include: { 
@@ -52,27 +53,43 @@ export class StockController {
             },
           });
 
-          if (!plate || !plate.available) {
+          if (!plate) {
+            console.log(`❌ Plate not found: ${item.plateId}`);
+            result.valid = false;
+            result.issues.push(`Plate "${item.name}" not found`);
+            allValid = false;
+          } else if (!plate.available) {
+            console.log(`❌ Plate not available: ${item.plateId}`);
             result.valid = false;
             result.issues.push(`Plate "${item.name}" is not available`);
             allValid = false;
           } else {
+            console.log(`✅ Plate found: ${plate.name}, ingredients: ${plate.ingredients.length}`);
             // Check each ingredient in the plate
-            for (const plateIngredient of plate.ingredients) {
-              const requiredStock = plateIngredient.quantity * item.quantity;
-              const availableStock = plateIngredient.ingredient.stock;
+            if (plate.ingredients.length === 0) {
+              console.log(`⚠️ Plate has no ingredients: ${item.plateId}`);
+              // Plate with no ingredients is considered valid
+            } else {
+              for (const plateIngredient of plate.ingredients) {
+                const requiredStock = plateIngredient.quantity * item.quantity;
+                const availableStock = plateIngredient.ingredient.stock;
 
-              if (!plateIngredient.ingredient.available) {
-                result.valid = false;
-                result.issues.push(`Ingredient "${plateIngredient.ingredient.name}" is not available`);
-                allValid = false;
-              } else if (availableStock < requiredStock) {
-                result.valid = false;
-                result.issues.push(
-                  `Insufficient stock for "${plateIngredient.ingredient.name}". ` +
-                  `Required: ${requiredStock}, Available: ${availableStock}`
-                );
-                allValid = false;
+                console.log(`  - Ingredient: ${plateIngredient.ingredient.name}, Required: ${requiredStock}, Available: ${availableStock}`);
+
+                if (!plateIngredient.ingredient.available) {
+                  console.log(`  ❌ Ingredient not available: ${plateIngredient.ingredient.name}`);
+                  result.valid = false;
+                  result.issues.push(`Ingredient "${plateIngredient.ingredient.name}" is not available`);
+                  allValid = false;
+                } else if (availableStock < requiredStock) {
+                  console.log(`  ❌ Insufficient stock: ${plateIngredient.ingredient.name}`);
+                  result.valid = false;
+                  result.issues.push(
+                    `Insufficient stock for "${plateIngredient.ingredient.name}". ` +
+                    `Required: ${requiredStock}, Available: ${availableStock}`
+                  );
+                  allValid = false;
+                }
               }
             }
           }

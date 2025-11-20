@@ -45,34 +45,76 @@ export const useCartStore = create<CartState>((set, get) => ({
       }
 
       // First validate stock for the new item
-      const stockValidation = await fetch(`${config.api.baseUrl}/stock/validate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          items: [{
-            type: itemData.type,
-            plateId: itemData.plateId,
-            customIngredients: itemData.customIngredients,
-            quantity: itemData.quantity,
-            name: itemData.name,
-          }]
-        }),
-      });
+      let stockValidation;
+      try {
+        console.log(`🌐 Attempting to validate stock at: ${config.api.baseUrl}/stock/validate`);
+        stockValidation = await fetch(`${config.api.baseUrl}/stock/validate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            items: [{
+              type: itemData.type,
+              plateId: itemData.plateId,
+              customIngredients: itemData.customIngredients,
+              quantity: itemData.quantity,
+              name: itemData.name,
+            }]
+          }),
+        });
+        console.log(`✅ Stock validation response status: ${stockValidation.status}`);
+      } catch (fetchError: any) {
+        console.error('❌ Network error validating stock:', fetchError);
+        const errorMessage = fetchError?.message || 'Error de conexión';
+        
+        // Provide more specific error messages
+        if (errorMessage.includes('Network request failed') || errorMessage.includes('Failed to fetch')) {
+          set({ 
+            error: `No se pudo conectar al servidor. Verifica que el backend esté corriendo en ${config.api.baseUrl}`, 
+            loading: false 
+          });
+        } else {
+          set({ 
+            error: `Error de conexión: ${errorMessage}`, 
+            loading: false 
+          });
+        }
+        return false;
+      }
 
       if (!stockValidation.ok) {
-        set({ error: 'Failed to validate stock', loading: false });
+        const errorText = await stockValidation.text();
+        let errorMessage = 'Failed to validate stock';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          errorMessage = `Error del servidor (${stockValidation.status})`;
+        }
+        set({ error: errorMessage, loading: false });
         return false;
       }
 
       const stockData = await stockValidation.json();
       
-      if (!stockData.ok || !stockData.data.allValid) {
-        const issues = stockData.data.results[0]?.issues || ['Stock not available'];
-        set({ error: issues[0], loading: false });
+      console.log('📦 Stock validation response:', JSON.stringify(stockData, null, 2));
+      
+      if (!stockData.ok) {
+        const errorMessage = stockData.message || 'Error al validar stock';
+        set({ error: errorMessage, loading: false });
         return false;
       }
+      
+      if (!stockData.data || !stockData.data.allValid) {
+        const issues = stockData.data?.results?.[0]?.issues || ['Stock not available'];
+        const errorMessage = issues[0] || 'El item no está disponible';
+        console.log('❌ Stock validation failed:', issues);
+        set({ error: errorMessage, loading: false });
+        return false;
+      }
+      
+      console.log('✅ Stock validation passed');
 
       // Stock is valid, proceed with adding to cart
       const { cart } = get();
@@ -196,9 +238,28 @@ export const useCartStore = create<CartState>((set, get) => ({
       set({ cart: updatedCart, loading: false });
       return true;
 
-    } catch (error) {
-      console.error('Error adding item to cart:', error);
-      set({ error: 'Failed to add item to cart', loading: false });
+    } catch (error: any) {
+      console.error('❌ Error adding item to cart:', error);
+      let errorMessage = 'No se pudo agregar al carrito';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Configuration not loaded')) {
+          errorMessage = 'La aplicación no está configurada correctamente';
+        } else if (error.message.includes('Network request failed') || 
+                   error.message.includes('Failed to fetch') ||
+                   error.message.includes('fetch') || 
+                   error.message.includes('network')) {
+          const config = useConfigStore.getState().config;
+          const apiUrl = config?.api?.baseUrl || 'servidor';
+          errorMessage = `Error de conexión. Verifica que el backend esté corriendo en ${apiUrl}`;
+        } else {
+          errorMessage = error.message;
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      set({ error: errorMessage, loading: false });
       return false;
     }
   },
