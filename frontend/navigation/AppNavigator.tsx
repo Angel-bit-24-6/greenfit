@@ -9,11 +9,13 @@ import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
 import { SubscriptionPaymentScreen } from '../screens/auth/SubscriptionPaymentScreen';
 import EmployeeLoginScreen from '../screens/employee/EmployeeLoginScreen';
+import { ProducerLoginScreen } from '../screens/producer/ProducerLoginScreen';
 
 // Main Navigation
 import { MainTabNavigator } from './MainTabNavigator';
 import { EmployeeAppNavigator } from './EmployeeAppNavigator';
 import { AdminNavigator } from './AdminNavigator';
+import { ProducerNavigator } from './ProducerNavigator';
 import { CustomPlateBuilderScreen } from '../screens/main/CustomPlateBuilderScreen';
 import { CheckoutScreen } from '../screens/CheckoutScreen';
 import OrdersScreen from '../screens/OrdersScreen';
@@ -39,6 +41,8 @@ export type RootStackParamList = {
   SatisfactionSurvey: { orderId: string };
   Employee: undefined;
   EmployeeLogin: undefined; // Add Employee Login to auth stack
+  Producer: undefined; // Producer Panel
+  ProducerLogin: undefined; // Producer Login
   Admin: undefined; // Admin Panel
   ThemeSettings: undefined;
 };
@@ -46,7 +50,7 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const AppNavigator: React.FC = () => {
-  const { isAuthenticated, loading } = useAuthStore();
+  const { isAuthenticated, loading, user } = useAuthStore();
   const { initializeAdminAuth } = useAdminStore();
 
   // Initialize admin authentication on app start
@@ -63,8 +67,13 @@ export const AppNavigator: React.FC = () => {
     return null;
   }
 
+  // Check if user is producer
+  const isProducer = isAuthenticated && user?.role === 'producer';
+
+  console.log('📱 AppNavigator render:', { isAuthenticated, isProducer, userRole: user?.role });
+
   return (
-    <NavigationContainer>
+    <NavigationContainer key={isAuthenticated ? 'authenticated' : 'guest'}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: {
@@ -76,7 +85,16 @@ export const AppNavigator: React.FC = () => {
           },
         }}
       >
-        {isAuthenticated ? (
+        {isProducer ? (
+          // Producer Stack
+          <Stack.Screen 
+            name="Producer" 
+            component={ProducerNavigator}
+            options={{
+              headerShown: false,
+            }}
+          />
+        ) : isAuthenticated ? (
           // Authenticated Stack - Main App with Tabs
           <>
             <Stack.Screen 
@@ -217,8 +235,22 @@ export const AppNavigator: React.FC = () => {
               }}
             />
             <Stack.Screen 
+              name="ProducerLogin" 
+              component={ProducerLoginScreen}
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen 
               name="Employee" 
               component={EmployeeAppNavigator}
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen 
+              name="Producer" 
+              component={ProducerNavigator}
               options={{
                 headerShown: false,
               }}

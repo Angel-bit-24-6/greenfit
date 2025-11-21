@@ -46,12 +46,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.error('❌ Error loading theme preferences after login:', error);
     }
 
-    // Load subscription after login
-    try {
-      const { fetchCurrentSubscription } = require('./subscriptionStore').useSubscriptionStore.getState();
-      await fetchCurrentSubscription();
-    } catch (error) {
-      console.error('❌ Error loading subscription after login:', error);
+    // Load subscription after login (only for customers)
+    if (user.role === 'customer' || !user.role) {
+      try {
+        const { fetchCurrentSubscription } = require('./subscriptionStore').useSubscriptionStore.getState();
+        await fetchCurrentSubscription();
+      } catch (error) {
+        console.error('❌ Error loading subscription after login:', error);
+      }
     }
   },
 
@@ -61,6 +63,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Call AuthService logout to clear storage and notify backend
     await AuthService.logout();
     
+    // Clear subscription store (only if it exists)
+    try {
+      const { useSubscriptionStore } = await import('./subscriptionStore');
+      useSubscriptionStore.setState({ subscription: null, error: null });
+    } catch (error) {
+      console.log('Subscription store not available');
+    }
+    
     set({
       user: null,
       token: null,
@@ -69,6 +79,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       loading: false,
       isInitialized: true
     });
+    
+    console.log('✅ Logout completed - isAuthenticated:', false);
   },
 
   initializeAuth: async () => {
@@ -133,12 +145,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const { loadPreferencesFromBackend } = require('./themeStore').useThemeStore.getState();
         await loadPreferencesFromBackend();
 
-        // También recargar suscripción al refrescar perfil
-        try {
-          const { fetchCurrentSubscription } = require('./subscriptionStore').useSubscriptionStore.getState();
-          await fetchCurrentSubscription();
-        } catch (error) {
-          console.error('❌ Error loading subscription after refresh:', error);
+        // También recargar suscripción al refrescar perfil (only for customers)
+        if (response.data.role === 'customer' || !response.data.role) {
+          try {
+            const { fetchCurrentSubscription } = require('./subscriptionStore').useSubscriptionStore.getState();
+            await fetchCurrentSubscription();
+          } catch (error) {
+            console.error('❌ Error loading subscription after refresh:', error);
+          }
         }
       } else {
         // Profile fetch failed, might be token expired

@@ -10,7 +10,6 @@ import {
   Animated,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
   Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,14 +17,11 @@ import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { useAuthStore } from '../../stores/authStore';
 import { useThemeStore } from '../../stores/themeStore';
-import { useSubscriptionStore } from '../../stores/subscriptionStore';
 import { ToastManager } from '../../utils/ToastManager';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 
-const { width } = Dimensions.get('window');
-
-export const LoginScreen: React.FC = () => {
-  const [email, setEmail] = useState('test@greenfit.mx');
+export const ProducerLoginScreen: React.FC = () => {
+  const [email, setEmail] = useState('productor@nutrifresco.mx');
   const [password, setPassword] = useState('test123');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
@@ -34,8 +30,7 @@ export const LoginScreen: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
 
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  const { login, setLoading: setAuthLoading, user, isAuthenticated } = useAuthStore();
-  const { subscription } = useSubscriptionStore();
+  const { login, setLoading: setAuthLoading } = useAuthStore();
   const { getThemeColors, currentTheme, colorMode } = useThemeStore();
   const COLORS = getThemeColors();
   
@@ -80,15 +75,23 @@ export const LoginScreen: React.FC = () => {
     try {
       const AuthService = await import('../../services/authService');
       const response = await AuthService.default.login({ email, password });
+      
       if (response.ok && response.data) {
+        // Verificar que el usuario sea productor
+        if (response.data.user.role !== 'producer') {
+          ToastManager.error('Error', 'Esta cuenta no es de productor');
+          return;
+        }
+
         const user = { ...response.data.user, phone: response.data.user.phone ?? undefined };
         await login(user, response.data.token);
-        ToastManager.loginSuccess(user.name || 'Usuario');
+        ToastManager.loginSuccess(user.name || 'Productor');
+        // Navigation será manejada automáticamente por AppNavigator
       } else {
         ToastManager.error('Error', response.message || 'Credenciales inválidas');
       }
     } catch (error) {
-      console.error('❌ Login error:', error);
+      console.error('❌ Producer login error:', error);
       ToastManager.error('Error', 'No se pudo iniciar sesión');
     } finally {
       setLoading(false);
@@ -128,10 +131,11 @@ export const LoginScreen: React.FC = () => {
                 style={styles.logoImage}
                 resizeMode="contain"
               />
-              <Text style={[styles.brandName, { color: COLORS.text }]}>NUTRIFRESCO</Text>
+              <Text style={styles.brandName}>NUTRIFRESCO</Text>
+              <Text style={styles.tagline}>Frescura que se nota, calidad que se siente</Text>
             </Animated.View>
             
-            {/* Wavy Separator - Simplified */}
+            {/* Wavy Separator */}
             <View style={styles.wavyContainer}>
               <View style={[styles.wavyShape, { backgroundColor: COLORS.background }]} />
             </View>
@@ -149,28 +153,14 @@ export const LoginScreen: React.FC = () => {
         >
           {/* Welcome Text */}
           <View style={styles.welcomeSection}>
-            <Text style={styles.welcomeText}>
-              {isAuthenticated && user ? `Bienvenido, ${user.name?.split(' ')[0] || 'Usuario'}` : 'Bienvenido de nuevo'}
-            </Text>
-            {isAuthenticated && subscription && (
-              <View style={[styles.subscriptionBadge, { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary }]}>
-                <Text style={[styles.subscriptionBadgeText, { color: COLORS.primary }]}>
-                  {subscription.plan === 'BASIC' && '🥬'} 
-                  {subscription.plan === 'STANDARD' && '🌱'} 
-                  {subscription.plan === 'PREMIUM' && '🌟'} 
-                  {' '}
-                  Plan {subscription.plan === 'BASIC' ? 'Básico' : subscription.plan === 'STANDARD' ? 'Estándar' : 'Premium'}
-                  {' • '}
-                  {subscription.limitInKg} kg/mes
-                </Text>
-              </View>
-            )}
+            <Text style={styles.welcomeTitle}>Iniciar Sesión</Text>
+            <Text style={styles.welcomeSubtitle}>Accede a tu cuenta de productor</Text>
           </View>
 
           {/* Form */}
           <View style={styles.form}>
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Email</Text>
+              <Text style={styles.inputLabel}>Usuario</Text>
               <View style={[
                 styles.inputContainer,
                 isEmailFocused && styles.inputContainerFocused
@@ -178,7 +168,7 @@ export const LoginScreen: React.FC = () => {
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
-                  placeholder="User name"
+                  placeholder="correo@ejemplo.com"
                   placeholderTextColor={COLORS.textSecondary}
                   keyboardType="email-address"
                   autoCapitalize="none"
@@ -199,7 +189,7 @@ export const LoginScreen: React.FC = () => {
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="Password"
+                  placeholder="••••••"
                   placeholderTextColor={COLORS.textSecondary}
                   secureTextEntry={!showPassword}
                   style={styles.textInput}
@@ -226,54 +216,25 @@ export const LoginScreen: React.FC = () => {
               style={[styles.loginButton, loading && styles.loginButtonDisabled]}
             >
               {loading ? (
-                <ActivityIndicator color={COLORS.background} size="small" />
+                <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
-                <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
+                <Text style={styles.loginButtonText}>Ingresar</Text>
               )}
             </TouchableOpacity>
-
-            {/* OR Separator */}
-            <View style={styles.orContainer}>
-              <View style={styles.orLine} />
-              <Text style={styles.orText}>OR</Text>
-              <View style={styles.orLine} />
-            </View>
-
-            {/* Social Login */}
-            <View style={styles.socialContainer}>
-              <TouchableOpacity style={styles.socialButton}>
-                <Text style={styles.socialIcon}>G</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.socialButton, styles.socialButtonFacebook]}>
-                <Text style={styles.socialIcon}>f</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.socialButton, styles.socialButtonApple]}>
-                <Text style={styles.socialIcon}>🍎</Text>
-              </TouchableOpacity>
-            </View>
           </View>
 
           {/* Footer */}
           <View style={styles.footer}>
-            <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-              <Text style={styles.registerText}>
-                ¿No tienes cuenta? <Text style={styles.registerLink}>Crear cuenta</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+              <Text style={styles.backText}>
+                ¿No eres productor? <Text style={styles.backLink}>Ir a inicio de sesión regular</Text>
               </Text>
             </TouchableOpacity>
 
             {/* Quick access - Only in dev */}
             {__DEV__ && (
               <View style={styles.devSection}>
-                <TouchableOpacity onPress={() => navigation.navigate('EmployeeLogin')} style={styles.devButton}>
-                  <Text style={styles.devButtonText}>🧑‍🍳 Empleado</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate('ProducerLogin')} style={styles.devButton}>
-                  <Text style={styles.devButtonText}>🌾 Productor</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate('Admin')} style={styles.devButton}>
-                  <Text style={styles.devButtonText}>🔐 Admin</Text>
-                </TouchableOpacity>
-                <Text style={styles.devHint}>Test: test@greenfit.mx / test123</Text>
+                <Text style={styles.devHint}>Test: producer@greenfit.mx / test123</Text>
               </View>
             )}
           </View>
@@ -297,14 +258,14 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     paddingHorizontal: 24,
   },
   
-  // --- HEADER CON GRADIENTE ---
+  // Header
   headerContainer: {
     width: '100%',
     marginBottom: 0,
   },
   gradientHeader: {
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 40,
+    paddingBottom: 50,
     paddingHorizontal: 24,
     position: 'relative',
   },
@@ -313,15 +274,23 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     zIndex: 1,
   },
   logoImage: {
-    width: 120,
-    height: 120,
-    marginBottom: 16,
+    width: 100,
+    height: 100,
+    marginBottom: 12,
   },
   brandName: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '700',
+    color: '#FFFFFF',
     letterSpacing: 1.5,
     textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  tagline: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.9)',
+    textAlign: 'center',
+    fontWeight: '400',
   },
   wavyContainer: {
     position: 'absolute',
@@ -342,54 +311,44 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     transform: [{ translateY: 20 }],
   },
   
-  // --- WELCOME SECTION ---
+  // Welcome Section
   welcomeSection: {
     marginTop: 32,
-    marginBottom: 40,
+    marginBottom: 32,
     alignItems: 'center',
   },
-  welcomeText: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: COLORS.text,
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  subscriptionBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginTop: 8,
-    alignSelf: 'center',
-  },
-  subscriptionBadgeText: {
-    fontSize: 14,
+  welcomeTitle: {
+    fontSize: 26,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  welcomeSubtitle: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    fontWeight: '400',
   },
   
-  // --- FORMULARIO ---
+  // Form
   form: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   inputGroup: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   inputLabel: {
     fontSize: 15,
     fontWeight: '600',
     color: COLORS.text,
-    marginBottom: 10,
-    letterSpacing: 0.3,
+    marginBottom: 8,
   },
   inputContainer: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -398,7 +357,7 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
     borderWidth: 2,
   },
   textInput: {
-    fontSize: 16,
+    fontSize: 15,
     color: COLORS.text,
     flex: 1,
     padding: 0,
@@ -413,122 +372,49 @@ const createStyles = (COLORS: any, colorMode: 'dark' | 'light') => StyleSheet.cr
   errorText: {
     fontSize: 13,
     color: COLORS.error,
-    marginTop: 6,
+    marginTop: 4,
     fontWeight: '500',
   },
   loginButton: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: 15,
+    borderRadius: 10,
     alignItems: 'center',
-    marginTop: 8,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    marginTop: 12,
   },
   loginButtonDisabled: {
     opacity: 0.6,
   },
   loginButtonText: {
-    color: COLORS.background,
-    fontSize: 17,
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '700',
-    letterSpacing: 0.5,
   },
   
-  // --- SOCIAL LOGIN ---
-  orContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  orLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: COLORS.border,
-  },
-  orText: {
-    marginHorizontal: 16,
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    letterSpacing: 1,
-  },
-  socialContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  socialButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  socialButtonFacebook: {
-    backgroundColor: '#1877F2',
-    borderColor: '#1877F2',
-  },
-  socialButtonApple: {
-    backgroundColor: '#000000',
-    borderColor: '#000000',
-  },
-  socialIcon: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  
-  // --- FOOTER ---
+  // Footer
   footer: {
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 16,
   },
-  registerText: {
-    fontSize: 15,
+  backText: {
+    fontSize: 14,
     color: COLORS.textSecondary,
-    fontWeight: '400',
+    textAlign: 'center',
   },
-  registerLink: {
+  backLink: {
     color: COLORS.primary,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   
-  // --- SECCIÓN DE DESARROLLO (Solo en modo DEV) ---
+  // Dev Section
   devSection: {
-    marginTop: 30,
+    marginTop: 24,
     alignItems: 'center',
-    width: '100%',
-  },
-  devButton: {
-    backgroundColor: COLORS.surface,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  devButtonText: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: '600',
   },
   devHint: {
     color: COLORS.textSecondary,
-    fontSize: 13,
-    marginTop: 16,
+    fontSize: 12,
     fontStyle: 'italic',
   },
 });
+
